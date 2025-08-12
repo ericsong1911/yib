@@ -1,0 +1,90 @@
+# .github/workflows/release.yml
+
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    name: Build and Upload Release Binaries
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Needed to create the release and upload assets
+
+    strategy:
+      matrix:
+        # Define the platforms to build for
+        include:
+          - os: linux
+            arch: amd64
+            archive_format: tar.gz
+          - os: linux
+            arch: arm64
+            archive_format: tar.gz
+          - os: windows
+            arch: amd64
+            archive_format: zip
+            extension: .exe
+          - os: darwin
+            arch: amd64
+            archive_format: tar.gz
+          - os: darwin
+            arch: arm64
+            archive_format: tar.gz
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.0'
+
+      - name: Build the application
+        env:
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+        run: |
+          echo "Building for ${{ matrix.os }}/${{ matrix.arch }}..."
+          # The -ldflags="-s -w" part strips debug information, making the binary smaller.
+          # The -tags="sqlite_fts5" part is crucial for including the search module.
+          go build -tags="sqlite_fts5" -ldflags="-s -w" -o "yib${{ matrix.extension }}" ./...
+      
+      - name: Package the release artifacts
+        run: |
+          # Create a directory to hold the packaged release
+          mkdir release_package
+          
+          # Move the compiled binary into the package directory
+          mv "yib${{ matrix.extension }}" release_package/
+
+          # Copy over the required assets for the application to run
+          cp -r static release_package/
+          cp -r templates release_package/
+          cp README.md release_package/
+          
+          # Create the final archive
+          ARCHIVE_NAME="yib-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}"
+          if [ "${{ matrix.archive_format }}" = "zip" ]; then
+            zip -r "${ARCHIVE_NAME}.zip" release_package
+            echo "ASSET_NAME=${ARCHIVE_NAME}.zip" >> $GITHUB_ENV
+          else
+            tar -czf "${ARCHIVE_NAME}.tar.gz" release_package
+            echo "ASSET_NAME=${ARCHIVE_NAME}.tar.gz" >> $GITHUB_ENV
+          fi
+
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v1
+        with:
+          # This will create a draft release.
+          draft: true
+          # This will use the tag name as the release title and the commit
+          # messages since the last tag as the release body.
+          generate_release_notes: true
+          files: |
+            yib-*.zip
+            yib-*.tar.gz
