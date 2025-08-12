@@ -52,7 +52,7 @@ You can run `yib` either by downloading a pre-compiled release or by building fr
 
 This is the easiest way to get started.
 
-1.  Go to the [**Releases Page**](https://github.com/your-username/yib/releases/latest).
+1.  Go to the [**Releases Page**](https://github.com/ericsong1911/yib/releases/latest).
 2.  Download the archive for your operating system and architecture (e.g., `yib-v1.0.0-linux-amd64.tar.gz`).
 3.  Extract the archive:
     ```bash
