@@ -6,6 +6,10 @@
 
 A classic-style, self-hosted imageboard project built with Go. `yib` is designed to be lightweight, secure, and feature-rich without relying on bulky frameworks.
 
+![Screenshot of yib home](docs/SCREENSHOT1.png)
+
+![Screenshot of yib board](docs/SCREENSHOT2.png)
+
 ---
 
 ## Features
@@ -98,3 +102,13 @@ You will need Git and the Go toolchain (version 1.18 or later) installed.
 **Example:**
 ```bash
 YIB_PORT=8888 YIB_DB_PATH=/var/data/myboard.db ./yib
+```
+
+## License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+
+## Acknowledgments
+
+*   Thanks to the developers of Go, SQLite, and all the open-source libraries used.
+*   Thanks to my friends who created themes, the favicon, and helped with bugtesting.
