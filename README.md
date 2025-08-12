@@ -6,6 +6,8 @@
 
 A classic-style, self-hosted imageboard project built with Go. `yib` is designed to be lightweight, secure, and feature-rich without relying on bulky frameworks.
 
+**Note: `yib` is still in beta. Issues and bugs are to be expected.**
+
 ![Screenshot of yib home](docs/SCREENSHOT1.png)
 
 ![Screenshot of yib board](docs/SCREENSHOT2.png)
