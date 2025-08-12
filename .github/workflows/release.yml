@@ -2,6 +2,7 @@
 
 name: Build and Release
 
+# This action runs on every push to a tag that starts with 'v' (e.g., v1.0, v1.2.1)
 on:
   push:
     tags:
@@ -12,7 +13,7 @@ jobs:
     name: Build and Upload Release Binaries
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Needed to create the release and upload assets
+      contents: write
 
     strategy:
       matrix:
@@ -28,10 +29,10 @@ jobs:
             arch: amd64
             archive_format: zip
             extension: .exe
-          - os: darwin
+          - os: darwin # macOS
             arch: amd64
             archive_format: tar.gz
-          - os: darwin
+          - os: darwin # macOS Apple Silicon
             arch: arm64
             archive_format: tar.gz
 
@@ -42,18 +43,18 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23.0'
+          go-version: '1.18'
+
+      - name: Tidy Go Modules
+        run: go mod tidy
 
       - name: Build the application
         env:
           GOOS: ${{ matrix.os }}
           GOARCH: ${{ matrix.arch }}
         run: |
-          go mod tidy
           echo "Building for ${{ matrix.os }}/${{ matrix.arch }}..."
-          # The -ldflags="-s -w" part strips debug information, making the binary smaller.
-          # The -tags="sqlite_fts5" part is crucial for including the search module.
-          go build -tags="sqlite_fts5" -ldflags="-s -w" -o "yib${{ matrix.extension }}" ./...
+          go build -tags="sqlite_fts5" -ldflags="-s -w" -o "yib${{ matrix.extension }}" .
       
       - name: Package the release artifacts
         run: |
