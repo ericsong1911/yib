@@ -4,10 +4,7 @@ package models
 import (
 	"database/sql"
 	"time"
-	// The "yib/database" import is now removed
 )
-
-// The Application struct has been moved to main.go
 
 // --- Core Data Models ---
 
@@ -101,7 +98,7 @@ type Report struct {
 	Reason    string
 	IPHash    string
 	CreatedAt time.Time
-	Post      Post // Include post info for the template
+	Post      Post
 }
 
 type ModAction struct {

@@ -22,29 +22,10 @@ import (
 	"strings"
 	"time"
 	"yib/config"
-	"yib/models"
 	"yib/utils"
 
 	_ "golang.org/x/image/webp"
 )
-
-// renderPostToHTML is a new helper function to render a single post template to a string.
-func renderPostToHTML(r *http.Request, app App, post *models.Post) (string, error) {
-	data := map[string]interface{}{
-		"Post":                  post,
-		"IsModerator":           utils.IsModerator(r),
-		"CurrentUserCookieHash": utils.HashIP(r.Context().Value(UserCookieKey).(string)),
-		"IsThreadView":          true, // Replies are always in a thread view
-		"csrfToken":             r.Context().Value(CSRFTokenKey),
-	}
-
-	buf := new(bytes.Buffer)
-	err := templates.ExecuteTemplate(buf, "post", data)
-	if err != nil {
-		return "", err
-	}
-	return buf.String(), nil
-}
 
 // HandlePost is the main handler for creating new threads and replies.
 func HandlePost(w http.ResponseWriter, r *http.Request, app App) {
@@ -114,9 +95,7 @@ func HandlePost(w http.ResponseWriter, r *http.Request, app App) {
 
 	var newPostID int64
 	var redirectURL string
-	isReply := threadIDStr != "" && threadIDStr != "0"
-
-	if !isReply { // New thread
+	if threadIDStr == "" || threadIDStr == "0" { // New thread
 		if boardConfig.ImageRequired && !hasImage {
 			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Image required for new threads on this board."})
 			return
@@ -155,7 +134,9 @@ func HandlePost(w http.ResponseWriter, r *http.Request, app App) {
 			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Database error creating reply."})
 			return
 		}
+
 		newPostID, _ = res.LastInsertId()
+
 		var updateErr error
 		if !strings.Contains(strings.ToLower(displayName), "sage") && replyCount < boardConfig.BumpLimit {
 			_, updateErr = tx.Exec("UPDATE threads SET reply_count = reply_count + 1, image_count = image_count + ?, bump = ? WHERE id = ?", utils.BtoI(hasImage), utils.GetSQLTime(), threadID)
@@ -191,37 +172,8 @@ func HandlePost(w http.ResponseWriter, r *http.Request, app App) {
 		return
 	}
 
-	// --- START FIX ---
-	// If it was a reply, render the new post to HTML and send it with the response.
-	if isReply {
-		newPost, err := app.DB().GetPostByID(newPostID)
-		if err != nil {
-			log.Printf("ERROR: Failed to get new post %d after creation: %v", newPostID, err)
-			// Fallback to simple redirect if we can't fetch the new post
-			respondJSON(w, http.StatusOK, map[string]string{"redirect": redirectURL})
-			return
-		}
-		postHTML, err := renderPostToHTML(r, app, newPost)
-		if err != nil {
-			log.Printf("ERROR: Failed to render new post %d to HTML: %v", newPostID, err)
-			respondJSON(w, http.StatusOK, map[string]string{"redirect": redirectURL})
-			return
-		}
-		token, question := app.Challenges().GenerateChallenge()
-		respondJSON(w, http.StatusOK, map[string]interface{}{
-			"postHTML":          postHTML,
-			"redirect":          redirectURL,
-			"challengeToken":    token,
-			"challengeQuestion": question,
-		})
-	} else {
-		// For new threads, just send the redirect.
-		respondJSON(w, http.StatusOK, map[string]string{"redirect": redirectURL})
-	}
-	// --- END FIX ---
+	respondJSON(w, http.StatusOK, map[string]string{"redirect": redirectURL})
 }
-
-// ... (the rest of the file remains the same) ...
 
 // HandleCookieDelete allows a user to delete their own post.
 func HandleCookieDelete(w http.ResponseWriter, r *http.Request, app App) {
@@ -252,6 +204,7 @@ func HandleCookieDelete(w http.ResponseWriter, r *http.Request, app App) {
 		return
 	}
 
+	// Provide empty strings for modHash and details, as this is a user action, not a mod action.
 	_, isOp, err := app.DB().DeletePost(postID, app.UploadDir(), "", "")
 	if err != nil {
 		log.Printf("ERROR: Failed to delete post %d by user request: %v", postID, err)
