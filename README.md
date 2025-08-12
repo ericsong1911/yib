@@ -1,6 +1,5 @@
 # yib - Yale Image Board
 
-[![Go Report Card](https://goreportcard.com/badge/github.com/ericsong1911/yib)](https://goreportcard.com/report/github.com/ericsong1911/yib)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Latest Release](https://img.shields.io/github/v/release/ericsong1911/yib)](https://github.com/ericsong1911/yib/releases/latest)
 
