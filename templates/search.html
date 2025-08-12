@@ -1,0 +1,30 @@
+<h2>Search</h2>
+<form method="get" class="search-form">
+    <input type="text" name="q" placeholder="Search posts..." value="{{.Query}}">
+    <select name="board">
+        <option value="">All Boards</option>
+        {{range .Boards}}
+        <option value="{{.ID}}" {{if eq .ID $.BoardID}}selected{{end}}>/{{.ID}}/ - {{.Name}}</option>
+        {{end}}
+    </select>
+    <input type="submit" value="Search">
+</form>
+
+{{if .Query}}
+<div class="search-results">
+    <h3>
+        {{if .Results}}
+            Found {{len .Results}} results for "{{.Query}}"
+        {{else}}
+            No results found for "{{.Query}}"
+        {{end}}
+    </h3>
+    {{range .Results}}
+    <div class="search-result-item">
+        <a href="/{{.BoardID}}/thread/{{.ThreadID}}#p{{.ID}}">/{{.BoardID}}/ - No.{{.ID}} {{if .IsOp}} - <em>{{.Subject}}</em>{{end}}</a>
+        <span class="dateTime">{{.Timestamp | formatTime}}</span>
+        <blockquote class="postMessage">{{.Content | safeHTML}}</blockquote>
+    </div>
+    {{end}}
+</div>
+{{end}}

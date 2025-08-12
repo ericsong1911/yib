@@ -1,0 +1,68 @@
+{{define "post"}}
+<div class="post {{if .Post.IsOp}}op{{else}}reply{{end}}" id="p{{.Post.ID}}">
+    {{if .Post.ImagePath}}
+    <div class="file">
+        <div class="fileText">File: <a href="{{.Post.ImagePath}}" target="_blank">{{.Post.ImagePath | basename}}</a></div>
+        <a href="{{.Post.ImagePath}}" target="_blank"><img src="{{.Post.ImagePath}}" class="postImg"></a>
+    </div>
+    {{end}}
+    <div class="postInfo">
+        {{if and .Post.IsOp .Post.Subject}}<span class="subject">{{.Post.Subject}}</span>{{end}}
+        <span class="nameBlock">
+            <span class="name">{{.Post.Name | default "Anonymous"}}</span>
+            {{if .Post.Tripcode}}<span class="postertrip">{{.Post.Tripcode}}</span>{{end}}
+        </span>
+        <time class="post-time dateTime" datetime="{{.Post.Timestamp | formatISO}}">{{.Post.Timestamp | formatTime}}</time>
+        <span class="postNum">
+            {{if .IsThreadView}}
+                <a href="#p{{.Post.ID}}">No.</a>
+                <a href="#" class="js-quote-link" data-post-id="{{.Post.ID}}">{{.Post.ID}}</a>
+            {{else}}
+                <a href="/{{.Post.BoardID}}/thread/{{.Post.ThreadID}}#p{{.Post.ID}}">No.</a>
+                <a href="/{{.Post.BoardID}}/thread/{{.Post.ThreadID}}#p{{.Post.ID}}">{{.Post.ID}}</a>
+            {{end}}
+        </span>
+        <span class="post-actions">
+            {{if .IsThreadView}}
+                [<a href="#" class="js-quote-link post-action-link" data-post-id="{{.Post.ID}}">Reply</a>]
+            {{else if .Post.IsOp}}
+                [<a href="/{{.Post.BoardID}}/thread/{{.Post.ThreadID}}" class="post-action-link">Reply</a>]
+            {{end}}
+            [<a href="#" class="report-link post-action-link" data-post-id="{{.Post.ID}}">Report</a>]
+
+            {{if and .CurrentUserCookieHash (eq .CurrentUserCookieHash .Post.CookieHash)}}
+            [<form action="/delete" method="post" onsubmit="return confirm('Are you sure you want to delete your post No. {{.Post.ID}}?');" style="display: inline;">
+                <input type="hidden" name="csrf_token" value="{{.csrfToken}}">
+                <input type="hidden" name="post_id" value="{{.Post.ID}}">
+                <input type="submit" value="Delete" class="user-delete-button post-action-link">
+            </form>]
+            {{end}}
+
+        </span>
+        {{if .IsModerator}}
+        <span class="moderator-controls">
+            <form action="/mod/lookup" method="get" target="_blank">
+                <input type="hidden" name="ip_hash" value="{{.Post.IPHash}}">
+                <input type="hidden" name="cookie_hash" value="{{.Post.CookieHash}}">
+                <input type="submit" value="Lookup">
+            </form>
+            <form action="/mod/delete-post" method="post" onsubmit="return confirm('Are you sure you want to delete post No. {{.Post.ID}}?');">
+                <input type="hidden" name="csrf_token" value="{{.csrfToken}}">
+                <input type="hidden" name="post_id" value="{{.Post.ID}}">
+                <input type="submit" value="Delete">
+            </form>
+            <button type="button" class="ban-link"
+                data-ip-hash="{{.Post.IPHash}}"
+                data-cookie-hash="{{.Post.CookieHash}}"
+                data-csrf-token="{{.csrfToken}}">Ban</button>
+        </span>
+        {{end}}
+        <span class="backlinks">
+            {{range .Post.Backlinks}}
+                <a href="#p{{.}}" class="backlink">&gt;&gt;{{.}} </a>
+            {{end}}
+        </span>
+    </div>
+    <blockquote class="postMessage">{{.Post.Content | safeHTML}}</blockquote>
+</div>
+{{end}}

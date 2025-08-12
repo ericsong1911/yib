@@ -1,0 +1,39 @@
+<h2>Active Bans</h2>
+<table>
+    <thead><tr><th>Hash</th><th>Type</th><th>Reason</th><th>Created</th><th>Expires</th><th>Action</th></tr></thead>
+    <tbody>
+    {{range .ActiveBans}}
+    <tr>
+        <td>{{.Hash}}</td>
+        <td>{{.BanType}}</td>
+        <td>{{.Reason}}</td>
+        <td><time class="post-time" datetime="{{.CreatedAt | formatISO}}">{{.CreatedAt | formatTime}}</time></td>
+        <td>{{if .ExpiresAt.Valid}}<time class="post-time" datetime="{{.ExpiresAt.Time | formatISO}}">{{.ExpiresAt.Time | formatTime}}</time>{{else}}Permanent{{end}}</td>
+        <td><form action="/mod/remove-ban" method="post"><input type="hidden" name="csrf_token" value="{{$.csrfToken}}"><input type="hidden" name="ban_id" value="{{.ID}}"><input type="submit" value="Remove Ban"></form></td>
+    </tr>
+    {{else}}
+    <tr><td colspan="6">No active bans.</td></tr>
+    {{end}}
+    </tbody>
+</table>
+
+<hr>
+
+<h2>Expired Bans</h2>
+<table>
+    <thead><tr><th>Hash</th><th>Type</th><th>Reason</th><th>Created</th><th>Expired</th><th>Action</th></tr></thead>
+    <tbody>
+    {{range .ExpiredBans}}
+    <tr>
+        <td>{{.Hash}}</td>
+        <td>{{.BanType}}</td>
+        <td>{{.Reason}}</td>
+        <td><time class="post-time" datetime="{{.CreatedAt | formatISO}}">{{.CreatedAt | formatTime}}</time></td>
+        <td><time class="post-time" datetime="{{.ExpiresAt.Time | formatISO}}">{{.ExpiresAt.Time | formatTime}}</time></td>
+        <td><form action="/mod/remove-ban" method="post"><input type="hidden" name="csrf_token" value="{{$.csrfToken}}"><input type="hidden" name="ban_id" value="{{.ID}}"><input type="submit" value="Remove (Clear)"></form></td>
+    </tr>
+    {{else}}
+    <tr><td colspan="6">No expired bans.</td></tr>
+    {{end}}
+    </tbody>
+</table>

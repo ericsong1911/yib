@@ -1,0 +1,126 @@
+/* ===========================
+   Theme: Futaba (Classic)
+   =========================== */
+body.theme-futaba { background-color: #ffffee; color: #800000; }
+.theme-futaba hr { background-color: #d9bfb7; }
+.theme-futaba a { color: #0000ee; }
+.theme-futaba a:hover { color: #dd0000; }
+
+.theme-futaba .boardHeader { color: #800000; }
+.theme-futaba .boardTitle { color: #af0a0f; }
+.theme-futaba .boardSubtitle { color: #800000; }
+.theme-futaba .navLinks { background: rgba(240,224,214,0.3); }
+.theme-futaba .navLinks a { color: #0000ee; }
+
+.theme-futaba .boardlist-header { 
+    background: #e04000;
+    color: #fff;
+}
+.theme-futaba .board-entry { 
+    background-color: #f0e0d6;
+    border: 1px solid #d9bfb7;
+}
+.theme-futaba .board-entry:hover {
+    background: #f5e5db;
+}
+.theme-futaba .board-desc { color: #800000; }
+
+.theme-futaba .postForm form { 
+    background: #f0e0d6;
+    border: 1px solid #d9bfb7;
+}
+.theme-futaba .postForm td:first-child { 
+    background: #d9bfb7;
+    color: #800000;
+}
+.theme-futaba .postForm input[type="text"],
+.theme-futaba .postForm input[type="password"],
+.theme-futaba .postForm textarea {
+    background: #fffff5;
+    border: 1px solid #d9bfb7;
+}
+.theme-futaba .postForm input[type="text"]:focus,
+.theme-futaba .postForm input[type="password"]:focus,
+.theme-futaba .postForm textarea:focus {
+    border-color: #af0a0f;
+    box-shadow: 0 0 0 2px rgba(175,10,15,0.08);
+}
+.theme-futaba .rules { color: #800000; }
+
+.theme-futaba input[type="submit"],
+.theme-futaba .postForm input[type="button"],
+.theme-futaba button {
+    background: #d9bfb7;
+    color: #800000;
+    font-weight: 600;
+    box-shadow: none;
+}
+.theme-futaba input[type="submit"]:hover,
+.theme-futaba input[type="button"]:hover,
+.theme-futaba button:hover {
+    background: #ccb0a8;
+}
+.theme-futaba input[type="submit"]:active,
+.theme-futaba input[type="button"]:active,
+.theme-futaba button:active {
+    background: #c0a49c;
+}
+
+.theme-futaba .post.reply { 
+    background: #f0e0d6;
+    border: 1px solid #d9bfb7;
+}
+.theme-futaba .post.reply:hover {
+    background: #f5e5db;
+}
+.theme-futaba .post.highlight { 
+    background: #f0c0c0;
+    border-color: #af0a0f;
+}
+
+.theme-futaba .subject { color: #cc1105; }
+.theme-futaba .name { color: #117743; }
+.theme-futaba .postertrip { color: #800000; }
+.theme-futaba .greentext { color: #789922; }
+.theme-futaba .omitted, .theme-futaba .fileText, .theme-futaba .catalog-stats { color: #707070; }
+
+.theme-futaba .postImg {
+    box-shadow: 0 1px 2px rgba(128,0,0,0.08);
+}
+.theme-futaba .postImg:hover {
+    box-shadow: 0 2px 4px rgba(128,0,0,0.12);
+}
+
+.theme-futaba #post-preview { 
+    background: #f0e0d6;
+    border: 1px solid #d9bfb7;
+    box-shadow: 0 3px 10px rgba(217,191,183,0.3);
+}
+.theme-futaba .footer, .theme-futaba .deletion-form { 
+    background: rgba(240,224,214,0.3);
+    border: 1px solid #d9bfb7;
+}
+
+.theme-futaba .modal-backdrop { background: rgba(255, 255, 238, 0.85); }
+.theme-futaba .modal-content { 
+    background: #f0e0d6;
+    border: 1px solid #d9bfb7;
+}
+
+.theme-futaba .catalog-item {
+    background: #f0e0d6;
+}
+.theme-futaba .catalog-item:hover {
+    background: #f5e5db;
+    transform: translateY(-2px);
+}
+
+.theme-futaba .moderator-controls {
+    background: rgba(217,191,183,0.3);
+    border: 1px solid #d9bfb7;
+}
+
+/* CORRECTED: Fix for moderator action link colors */
+.theme-futaba .moderator-controls {
+    color: #0000ee;
+}

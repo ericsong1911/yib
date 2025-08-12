@@ -1,0 +1,130 @@
+/* ==================
+   Theme: Yalie Blue 
+   ================== */
+body.theme-yalie-blue { background-color: #f0f4ff; color: #1a1a1a; }
+.theme-yalie-blue hr { background-color: #ccd9ff; }
+.theme-yalie-blue a { color: #2a4b8d; }
+.theme-yalie-blue a:hover { color: #d90000; }
+
+.theme-yalie-blue .boardHeader { color: #0a2a6d; }
+.theme-yalie-blue .boardTitle { 
+    color: #af0a0f;
+    text-shadow: 1px 1px 2px rgba(175,10,15,0.08);
+}
+.theme-yalie-blue .boardSubtitle { color: #3a5b9d; }
+.theme-yalie-blue .navLinks { 
+    background: rgba(230,236,255,0.3);
+}
+.theme-yalie-blue .navLinks a { color: #1a3b7d; }
+
+.theme-yalie-blue .boardlist-header { 
+    background: #2a4b8d;
+    color: #fff;
+}
+.theme-yalie-blue .board-entry { 
+    background: #e6ecff;
+    border: 1px solid #ccd9ff;
+}
+.theme-yalie-blue .board-entry:hover {
+    background: #dce4ff;
+}
+.theme-yalie-blue .board-desc { color: #4a6b8d; }
+
+.theme-yalie-blue .postForm form { 
+    background: #e6ecff;
+    border: 1px solid #ccd9ff;
+}
+.theme-yalie-blue .postForm td:first-child { 
+    background: #d0daff;
+    color: #0a2a6d;
+}
+.theme-yalie-blue .postForm input[type="text"],
+.theme-yalie-blue .postForm input[type="password"],
+.theme-yalie-blue .postForm textarea {
+    background: #fafbff;
+    border: 1px solid #ccd9ff;
+}
+.theme-yalie-blue .postForm input[type="text"]:focus,
+.theme-yalie-blue .postForm input[type="password"]:focus,
+.theme-yalie-blue .postForm textarea:focus {
+    border-color: #2a4b8d;
+    box-shadow: 0 0 0 2px rgba(42,75,141,0.08);
+    background: #fff;
+}
+.theme-yalie-blue .rules { color: #5a5a5a; }
+
+.theme-yalie-blue input[type="submit"],
+.theme-yalie-blue input[type="button"],
+.theme-yalie-blue button {
+    background: #2a4b8d;
+    color: #fff;
+}
+.theme-yalie-blue input[type="submit"]:hover,
+.theme-yalie-blue input[type="button"]:hover,
+.theme-yalie-blue button:hover {
+    background: #1a3b7d;
+}
+.theme-yalie-blue input[type="submit"]:active,
+.theme-yalie-blue input[type="button"]:active,
+.theme-yalie-blue button:active {
+    background: #15316d;
+}
+
+.theme-yalie-blue .post.reply { 
+    background: #e6ecff;
+    border: 1px solid #ccd9ff;
+}
+.theme-yalie-blue .post.reply:hover {
+    background: #dce4ff;
+}
+.theme-yalie-blue .post.highlight { 
+    background: #dce4ff;
+    border-color: #af0a0f;
+}
+
+.theme-yalie-blue .subject { color: #0f0c5d; }
+.theme-yalie-blue .name { color: #117743; }
+.theme-yalie-blue .postertrip { color: #0f0c5d; }
+.theme-yalie-blue .greentext { color: #789922; }
+.theme-yalie-blue .omitted, .theme-yalie-blue .fileText, .theme-yalie-blue .catalog-stats { color: #5a5a5a; }
+
+.theme-yalie-blue .postImg {
+    box-shadow: 0 1px 2px rgba(42,75,141,0.08);
+}
+.theme-yalie-blue .postImg:hover {
+    box-shadow: 0 2px 4px rgba(42,75,141,0.12);
+}
+
+.theme-yalie-blue #post-preview { 
+    background: #f0f4ff;
+    border: 1px solid #2a4b8d;
+    box-shadow: 0 3px 10px rgba(42,75,141,0.15);
+}
+.theme-yalie-blue .footer, .theme-yalie-blue .deletion-form { 
+    background: rgba(230,236,255,0.3);
+    border: 1px solid #ccd9ff;
+}
+
+.theme-yalie-blue .modal-backdrop { background: rgba(42, 75, 141, 0.5); }
+.theme-yalie-blue .modal-content { 
+    background: #f0f4ff;
+    border: 1px solid #2a4b8d;
+}
+
+.theme-yalie-blue .catalog-item {
+    background: #e6ecff;
+}
+.theme-yalie-blue .catalog-item:hover {
+    background: #dce4ff;
+    transform: translateY(-2px);
+}
+
+.theme-yalie-blue .moderator-controls {
+    background: rgba(208,218,255,0.5);
+    border: 1px solid #b7c5d9;
+}
+
+/* CORRECTED: Fix for moderator action link colors */
+.theme-yalie-blue .moderator-controls {
+    color: #2a4b8d;
+}

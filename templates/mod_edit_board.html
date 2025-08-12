@@ -1,0 +1,57 @@
+<h2>Editing Board: /{{.Board.ID}}/ - {{.Board.Name}}</h2>
+
+<form action="/mod/edit-board" method="post" style="margin-top: 20px;">
+    <input type="hidden" name="csrf_token" value="{{.csrfToken}}">
+    <input type="hidden" name="board_id" value="{{.Board.ID}}">
+    <table>
+        <tbody>
+            <tr>
+                <td>Board ID:</td>
+                <td><strong>/{{.Board.ID}}/</strong> (Cannot be changed)</td>
+            </tr>
+            <tr>
+                <td>Name:</td>
+                <td><input type="text" name="name" value="{{.Board.Name}}" required></td>
+            </tr>
+            <tr>
+                <td>Description:</td>
+                <td><input type="text" name="description" size="50" value="{{.Board.Description}}"></td>
+            </tr>
+            <tr>
+                <td>Max Threads:</td>
+                <td><input type="number" name="max_threads" value="{{.Board.MaxThreads}}" min="10"></td>
+            </tr>
+            <tr>
+                <td>Bump Limit:</td>
+                <td><input type="number" name="bump_limit" value="{{.Board.BumpLimit}}" min="50"></td>
+            </tr>
+            <tr>
+                <td>New Password:</td>
+                <td><input type="password" name="password" placeholder="Leave blank to keep unchanged"></td>
+            </tr>
+            <tr>
+                <td>Require Password:</td>
+                <td><input type="checkbox" name="require" {{if .Board.RequirePass}}checked{{end}}></td>
+            </tr>
+            <tr>
+                <td>Image Required:</td>
+                <td><input type="checkbox" name="image_required" {{if .Board.ImageRequired}}checked{{end}}> (For new threads)</td>
+            </tr>
+            <tr>
+                <td>Color Scheme:</td>
+                <td>
+                    <select name="color_scheme">
+                        <option value="yalie-blue" {{if eq .Board.ColorScheme "yalie-blue"}}selected{{end}}>Yalie Blue</option>
+                        <option value="lullaby" {{if eq .Board.ColorScheme "lullaby"}}selected{{end}}>Lullaby</option>
+                        <option value="1159pm" {{if eq .Board.ColorScheme "1159pm"}}selected{{end}}>11:59 PM</option>
+                        <option value="tomorrow-night" {{if eq .Board.ColorScheme "tomorrow-night"}}selected{{end}}>Tomorrow Night</option>
+                        <option value="photon" {{if eq .Board.ColorScheme "photon"}}selected{{end}}>Photon</option>
+                        <option value="futaba" {{if eq .Board.ColorScheme "futaba"}}selected{{end}}>Futaba</option>
+                    </select>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+    <input type="submit" value="Save Changes">
+    <a href="/mod/" style="margin-left: 20px;">Cancel</a>
+</form>

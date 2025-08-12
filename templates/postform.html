@@ -1,0 +1,51 @@
+{{define "postform"}}
+<div class="postForm">
+    <form action="/post" method="post" enctype="multipart/form-data">
+        <input type="hidden" name="board_id" value="{{.BoardID}}">
+        <input type="hidden" name="csrf_token" id="postform-csrf-token" value="{{.csrfToken}}">
+        {{if .ThreadID}}<input type="hidden" name="thread_id" value="{{.ThreadID}}">{{end}}
+        <table>
+            <tbody>
+                <tr>
+                    <td>Name</td>
+                    <td>
+                        <div class="name-history-container">
+                            <input type="text" name="name" placeholder="Anonymous#tripcode" autocomplete="off" maxlength="75" value="{{.FormInput.Name}}">
+                        </div>
+                    </td>
+                </tr>
+
+                {{if not .ThreadID}}
+                <tr>
+                    <td>Subject</td>
+                    <td><input type="text" name="subject" maxlength="100" value="{{.FormInput.Subject}}"></td>
+                </tr>
+                {{end}}
+
+                <tr>
+                    <td>Comment <span class="required">*</span></td>
+                    <td><textarea name="content" required maxlength="8000">{{.FormInput.Content}}</textarea></td>
+                </tr>
+
+                <tr>
+                    <td>File {{if and (not .ThreadID) .BoardConfig.ImageRequired}}<span class="required">*</span>{{end}}</td>
+                    <td class="file-input-container">
+                        <input type="file" name="image" id="file-input" accept="image/*">
+                        <span class="file-clear-button" id="file-clear" style="display: none;">&times;</span>
+                    </td>
+                </tr>
+                <tr>
+                    <td>Challenge <span class="required">*</span></td>
+                    <td>
+                        {{.ChallengeQuestion}}<br>
+                        <input type="text" name="challenge_answer" size="6" required>
+                        <input type="hidden" name="challenge_token" value="{{.ChallengeToken}}">
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+        <input type="submit" value="Post">
+        <div class="rules">Max file: {{.MaxFileSizeMB}}MB. Allowed: JPG, PNG, GIF, WebP.</div>
+    </form>
+</div>
+{{end}}

@@ -1,0 +1,17 @@
+<div id="content-container">
+    <div class="catalog-grid">
+        {{range .Threads}}
+        <div class="catalog-item">
+            <a href="/{{.BoardID}}/thread/{{.ID}}">
+                <img src="{{.Op.ImagePath | default "/static/placeholder.png"}}" loading="lazy">
+            </a>
+            <div class="catalog-stats">
+                <b>R:</b> {{.ReplyCount}} / <b>I:</b> {{.ImageCount}}
+            </div>
+            <div>{{.Op.Content | stripHTML | truncate 75}}</div>
+        </div>
+        {{end}}
+    </div>
+
+    {{template "pagination" .Pagination}}
+</div>

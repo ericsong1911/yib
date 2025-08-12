@@ -1,0 +1,130 @@
+/* ===========================
+   Theme: Tomorrow Night (Dark)
+   =========================== */
+body.theme-tomorrow-night { background-color: #1d1f21; color: #c5c8c6; }
+.theme-tomorrow-night hr { background-color: #373b41; }
+.theme-tomorrow-night a { color: #81a2be; }
+.theme-tomorrow-night a:hover { color: #b294bb; }
+
+.theme-tomorrow-night .boardHeader { color: #c5c8c6; }
+.theme-tomorrow-night .boardTitle { 
+    color: #de935f;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+}
+.theme-tomorrow-night .boardSubtitle { color: #969896; }
+.theme-tomorrow-night .navLinks { background: rgba(40,42,46,0.5); }
+.theme-tomorrow-night .navLinks a { color: #8abeb7; }
+
+.theme-tomorrow-night .boardlist-header { 
+    background: #282a2e;
+    color: #c5c8c6;
+}
+.theme-tomorrow-night .board-entry { 
+    background: #282a2e;
+    border: 1px solid #373b41;
+}
+.theme-tomorrow-night .board-entry:hover {
+    background: #2d2f33;
+}
+.theme-tomorrow-night .board-desc { color: #969896; }
+
+.theme-tomorrow-night .postForm form { 
+    background: #282a2e;
+    border: 1px solid #373b41;
+}
+.theme-tomorrow-night .postForm td:first-child { 
+    background: #373b41;
+    color: #c5c8c6;
+}
+.theme-tomorrow-night .postForm input[type="text"],
+.theme-tomorrow-night .postForm input[type="password"],
+.theme-tomorrow-night .postForm textarea {
+    background: #1d1f21;
+    color: #c5c8c6;
+    border: 1px solid #373b41;
+}
+.theme-tomorrow-night .postForm input[type="text"]:focus,
+.theme-tomorrow-night .postForm input[type="password"]:focus,
+.theme-tomorrow-night .postForm textarea:focus {
+    border-color: #81a2be;
+    box-shadow: 0 0 0 2px rgba(129,162,190,0.15);
+    background: #22252a;
+}
+.theme-tomorrow-night .rules { color: #969896; }
+
+.theme-tomorrow-night input[type="submit"],
+.theme-tomorrow-night input[type="button"],
+.theme-tomorrow-night button {
+    background: #373b41;
+    color: #c5c8c6;
+    box-shadow: none;
+}
+.theme-tomorrow-night input[type="submit"]:hover,
+.theme-tomorrow-night input[type="button"]:hover,
+.theme-tomorrow-night button:hover {
+    background: #3e424a;
+}
+.theme-tomorrow-night input[type="submit"]:active,
+.theme-tomorrow-night input[type="button"]:active,
+.theme-tomorrow-night button:active {
+    background: #2d3035;
+}
+
+.theme-tomorrow-night .post.reply { 
+    background: #282a2e;
+    border: 1px solid #373b41;
+}
+.theme-tomorrow-night .post.reply:hover {
+    background: #2d2f33;
+}
+.theme-tomorrow-night .post.highlight { 
+    background: #373b41;
+    border-color: #de935f;
+}
+
+.theme-tomorrow-night .subject { color: #b294bb; }
+.theme-tomorrow-night .name { color: #8abeb7; }
+.theme-tomorrow-night .postertrip { color: #de935f; }
+.theme-tomorrow-night .greentext { color: #b5bd68; }
+.theme-tomorrow-night .omitted, .theme-tomorrow-night .fileText, .theme-tomorrow-night .catalog-stats { color: #969896; }
+
+.theme-tomorrow-night .postImg {
+    box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+}
+.theme-tomorrow-night .postImg:hover {
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+.theme-tomorrow-night #post-preview { 
+    background: #282a2e;
+    border: 1px solid #81a2be;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.3);
+}
+.theme-tomorrow-night .footer, .theme-tomorrow-night .deletion-form { 
+    background: rgba(40,42,46,0.5);
+    border: 1px solid #373b41;
+}
+
+.theme-tomorrow-night .modal-backdrop { background: rgba(0, 0, 0, 0.7); }
+.theme-tomorrow-night .modal-content { 
+    background: #282a2e;
+    border: 1px solid #81a2be;
+}
+
+.theme-tomorrow-night .catalog-item {
+    background: #282a2e;
+}
+.theme-tomorrow-night .catalog-item:hover {
+    background: #2d2f33;
+    transform: translateY(-2px);
+}
+
+.theme-tomorrow-night .moderator-controls {
+    background: rgba(55,59,65,0.8);
+    border: 1px solid #373b41;
+}
+
+/* CORRECTED: Fix for moderator action link colors */
+.theme-tomorrow-night .moderator-controls {
+    color: #81a2be;
+}

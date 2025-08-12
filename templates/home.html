@@ -1,0 +1,15 @@
+<div class="boardlist">
+    {{range .Categories}}
+    <details class="category-group" open>
+        <summary class="boardlist-header">{{.Name}}</summary>
+        {{range .Boards}}
+        <div class="board-entry">
+            <a href="/{{.ID}}/" class="board-link">/{{.ID}}/ - {{.Name}} {{if .IsLocked}}🔒{{end}}</a>
+            <div class="board-desc">{{.Description}}</div>
+        </div>
+        {{else}}
+        <div class="board-entry"><span class="board-desc">No boards in this category.</span></div>
+        {{end}}
+    </details>
+    {{end}}
+</div>

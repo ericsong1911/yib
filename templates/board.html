@@ -1,0 +1,62 @@
+{{if .FormError}}
+<div class="form-error">Error: {{.FormError | safeHTML}}</div>
+{{end}}
+{{template "postform" .}}
+<hr>
+
+<div id="content-container">
+    {{range .Threads}}
+    <div class="thread {{if .Sticky}}sticky{{end}} {{if .Locked}}thread-locked{{end}}" id="t{{.ID}}">
+        <div class="thread-controls">
+            <span class="post-actions">[<a href="#" class="hide-thread-link" data-thread-id="{{.ID}}">Hide</a>]</span>
+            <span class="thread-status-indicators">
+                {{if .Sticky}}<span>📌 Sticky</span>{{end}}
+                {{if .Locked}}<span>🔒 Locked</span>{{end}}
+            </span>
+            {{if $.IsModerator}}
+            <span class="moderator-controls">
+                <form action="/mod/toggle-sticky" method="post">
+                    <input type="hidden" name="csrf_token" value="{{$.csrfToken}}">
+                    <input type="hidden" name="thread_id" value="{{.ID}}">
+                    <input type="submit" value="{{if .Sticky}}Unsticky{{else}}Sticky{{end}}">
+                </form>
+                <form action="/mod/toggle-lock" method="post">
+                    <input type="hidden" name="csrf_token" value="{{$.csrfToken}}">
+                    <input type="hidden" name="thread_id" value="{{.ID}}">
+                    <input type="submit" value="{{if .Locked}}Unlock{{else}}Lock{{end}}">
+                </form>
+            </span>
+            {{end}}
+        </div>
+        
+        {{template "post" (dict "Post" .Op "csrfToken" $.csrfToken "IsModerator" $.IsModerator "CurrentUserCookieHash" $.CurrentUserCookieHash "IsThreadView" false)}}
+        
+        {{$omittedReplies := subtract .ReplyCount (len .Posts)}}
+        {{$displayedImages := imageCount (len .Posts) .Posts .Op}}
+        {{$omittedImages := subtract .ImageCount $displayedImages}}
+        {{if or (gt $omittedReplies 0) (gt $omittedImages 0)}}
+            <div class="omitted">
+                {{if gt $omittedReplies 0}}
+                    {{$omittedReplies}} 
+                    {{if eq $omittedReplies 1}}reply{{else}}replies{{end}}
+                {{end}}
+                {{if and (gt $omittedReplies 0) (gt $omittedImages 0)}}
+                    and 
+                {{end}}
+                {{if gt $omittedImages 0}}
+                    {{$omittedImages}} 
+                    {{if eq $omittedImages 1}}image{{else}}images{{end}}
+                {{end}}
+                omitted. Click Reply to view.
+            </div>
+        {{end}}
+        
+        {{range .Posts}}
+            {{template "post" (dict "Post" . "csrfToken" $.csrfToken "IsModerator" $.IsModerator "CurrentUserCookieHash" $.CurrentUserCookieHash "IsThreadView" false)}}
+        {{end}}
+    </div>
+    <hr>
+    {{end}}
+
+    {{template "pagination" .Pagination}}
+</div>

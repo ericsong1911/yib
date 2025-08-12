@@ -1,0 +1,16 @@
+<!-- templates/pagination.html -->
+{{define "pagination"}}
+{{if .}}
+<div class="pagination">
+    {{range .}}
+        {{if .IsCurrent}}
+            <span class="current-page">{{.Number}}</span>
+        {{else if .IsEllipsis}}
+            <span class="ellipsis">&hellip;</span>
+        {{else}}
+            <a href="?p={{.Number}}">{{.Number}}</a>
+        {{end}}
+    {{end}}
+</div>
+{{end}}
+{{end}}

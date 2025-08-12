@@ -1,0 +1,182 @@
+/* ==================
+ *  Theme: Lullaby
+ *  ================== */
+
+.theme-lullaby {
+    --bg: #131528;
+    --inner: #181e3f;
+    --highlight: #1c2d4f;
+    --text: #aac8e0;
+    --faint: #4e70ba;
+    --greentext: #78c700;
+    --link: #ae7df2;
+    --link-hover: #b442dd;
+    --button: #ae7df2;
+    --button-hover: #b442dd;
+    --button-active: #be1dc4;
+    --button-text: #fff;
+    --title: #74b5e8;
+    --indicator: #e09447;
+    --error: #c1264d;
+    --error-hover: #ed4964;
+    --locked-bg: #2d2133;
+
+    --cool-border: 1px solid var(--title);
+}
+
+body.theme-lullaby { background: var(--bg); color: var(--text); }
+.theme-lullaby hr { background-color: var(--title); opacity: 0.5; }
+.theme-lullaby a { color: var(--link); }
+.theme-lullaby a:hover { color: var(--link-hover); }
+
+.theme-lullaby .boardHeader { color: var(--title); }
+.theme-lullaby .boardTitle {
+    color: var(--title);
+    text-shadow: 3px 2px 1px var(--highlight);
+}
+.theme-lullaby .boardSubtitle { color: var(--faint); }
+.theme-lullaby .navLinks {
+    background: var(--bg);
+    border: var(--cool-border);
+}
+
+.theme-lullaby .boardlist-header {
+    background: var(--highlight);
+    border-bottom: var(--cool-border);
+    border-bottom-width: 2px;
+    color: var(--text);
+}
+.theme-lullaby .board-entry {
+    background: var(--inner);
+    border: 1px solid var(--highlight);
+}
+.theme-lullaby .board-entry:hover {
+    background: var(--highlight);
+}
+.theme-lullaby .board-desc {
+    color: var(--faint);
+}
+
+.theme-lullaby .postForm form {
+    background: var(--inner);
+    border: var(--cool-border);
+}
+.theme-lullaby .postForm td:first-child {
+    background: var(--highlight);
+    color: var(--text);
+}
+.theme-lullaby .postForm input[type="text"],
+.theme-lullaby .postForm input[type="password"],
+.theme-lullaby .postForm textarea {
+    background: var(--bg);
+    color: var(--text);
+    border: var(--cool-border);
+}
+.theme-lullaby .postForm input[type="text"]:focus,
+.theme-lullaby .postForm input[type="password"]:focus,
+.theme-lullaby .postForm textarea:focus {
+    background: var(--highlight);
+    border-color: var(--link);
+}
+.theme-lullaby .rules { color: var(--text); }
+
+.theme-lullaby input[type="submit"],
+.theme-lullaby input[type="button"],
+.theme-lullaby button {
+    background: var(--button);
+    color: var(--button-text);
+}
+.theme-lullaby input[type="submit"]:hover,
+.theme-lullaby input[type="button"]:hover,
+.theme-lullaby button:hover {
+    background: var(--button-hover);
+}
+.theme-lullaby input[type="submit"]:active,
+.theme-lullaby input[type="button"]:active,
+.theme-lullaby button:active {
+    background: var(--button-active);
+}
+
+.theme-lullaby .post.reply {
+    background: var(--inner);
+    border: 1px solid var(--highlight);
+}
+.theme-lullaby .post.reply:hover {
+    background: var(--highlight);
+}
+.theme-lullaby .post.highlight {
+    background: var(--highlight);
+    border: 2px solid var(--title);
+}
+
+.theme-lullaby .subject { color: var(--title); }
+.theme-lullaby .name { color: var(--faint); }
+.theme-lullaby .postertrip { color: var(--indicator); }
+.theme-lullaby .greentext { color: var(--greentext); }
+.theme-lullaby .omitted, .theme-lullaby .fileText, .theme-lullaby .catalog-stats { color: var(--faint); }
+
+.theme-lullaby .thread.sticky  {
+    border-left-color: var(--indicator);
+}
+.theme-lullaby .thread-status-indicators {
+    color: var(--indicator);
+}
+
+.theme-lullaby .thread.thread-locked .post.op {
+    background: var(--locked-bg);
+}
+
+.theme-lullaby .form-error {
+    background-color: var(--locked-bg);
+    color: var(--error);
+    border-color: var(--error);
+}
+
+.theme-lullaby .post-actions .user-delete-button {
+    color: var(--error) !important;
+}
+.theme-lullaby .post-actions .user-delete-button:hover {
+    color: var(--error-hover) !important;
+}
+
+.theme-lullaby .postImg {
+    box-shadow: 3px 2px 1px var(--highlight);
+}
+.theme-lullaby .postImg:hover {
+    box-shadow: 6px 4px 1px var(--highlight);
+}
+
+
+.theme-lullaby #post-preview {
+    background: var(--inner);
+    border: var(--cool-border);
+}
+.theme-lullaby .footer, .theme-lullaby .deletion-form {
+    background: var(--bg);
+    border: var(--cool-border);
+}
+
+.theme-lullaby .modal-backdrop { background: rgba(19, 21, 40, 0.8); }
+.theme-lullaby .modal-content {
+    background: var(--bg);
+    border: var(--cool-border);
+}
+
+.theme-lullaby .catalog-item {
+    background: var(--inner);
+    border: 1px solid var(--highlight);
+}
+.theme-lullaby .catalog-item:hover {
+    background: var(--highlight);
+    border-color: var(--title);
+    transform: translateY(-2px);
+}
+
+.theme-lullaby .moderator-controls {
+    background: var(--highlight);
+    border: 1px solid var(--faint);
+}
+
+.theme-lullaby .moderator-controls {
+    color: var(--text);
+}

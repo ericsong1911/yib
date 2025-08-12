@@ -1,0 +1,190 @@
+/* ==================
+ *  Theme: 11:59 PM
+ *  ================== */
+
+.theme-1159pm {
+	--bg: #000;
+	--inner: var(--bg);
+	--highlight: #291a56;
+	--text: #ddd;
+	--faint: #6c3ec1;
+	--greentext: #3fe26d;
+	--link: #ae7df2;
+	--link-hover: #a156f7;
+	--button: var(--highlight);
+	--button-hover: var(--faint);
+	--button-active: var(--faint);
+	--button-text: var(--text);
+	--title: var(--text);
+	--indicator: #e09447;
+	--error: #c1264d;
+	--error-hover: #ed4964;
+    --locked-bg: #2d2133;
+
+	--cool-border: 1px solid var(--faint);
+}
+
+body.theme-1159pm { background: var(--bg); color: var(--text); }
+.theme-1159pm hr { background-color: var(--title); opacity: 0.5; }
+.theme-1159pm a { color: var(--link); }
+.theme-1159pm a:hover { color: var(--link-hover); }
+
+.theme-1159pm .boardHeader { color: var(--title); }
+.theme-1159pm .boardTitle {
+	color: var(--title);
+	text-shadow: 2px 1px 1px var(--faint);
+}
+.theme-1159pm .boardSubtitle { color: var(--faint); }
+.theme-1159pm .navLinks {
+	background: var(--bg);
+	border: var(--cool-border);
+}
+
+.theme-1159pm .boardlist-header {
+	background: var(--highlight);
+	border-bottom: var(--cool-border);
+	border-bottom-width: 2px;
+	color: var(--text);
+}
+.theme-1159pm .board-entry {
+	background: var(--inner);
+	border: none;
+	border-top: 1px solid var(--highlight);
+}
+.theme-1159pm .board-entry:hover {
+	background: var(--highlight);
+}
+.theme-1159pm .board-desc {
+	color: var(--faint);
+}
+.theme-1159pm .board-link {
+	color: var(--text);
+}
+.theme-1159pm .board-link:hover {
+	color: var(--link);
+}
+
+.theme-1159pm .postForm form {
+	background: var(--inner);
+	border: var(--cool-border);
+}
+.theme-1159pm .postForm td:first-child {
+	background: var(--highlight);
+	border: none;
+	color: var(--text);
+}
+.theme-1159pm .postForm input[type="text"],
+.theme-1159pm .postForm input[type="password"],
+.theme-1159pm .postForm textarea {
+	background: var(--bg);
+	color: var(--text);
+	border: var(--cool-border);
+}
+.theme-1159pm .postForm input[type="text"]:focus,
+.theme-1159pm .postForm input[type="password"]:focus,
+.theme-1159pm .postForm textarea:focus {
+	background: var(--highlight);
+	border-color: var(--faint);
+}
+.theme-1159pm .rules { color: var(--text); }
+
+.theme-1159pm input[type="submit"],
+.theme-1159pm input[type="button"],
+.theme-1159pm button {
+	background: var(--button);
+	color: var(--button-text);
+}
+.theme-1159pm input[type="submit"]:hover,
+.theme-1159pm input[type="button"]:hover,
+.theme-1159pm button:hover {
+	background: var(--button-hover);
+}
+.theme-1159pm input[type="submit"]:active,
+.theme-1159pm input[type="button"]:active,
+.theme-1159pm button:active {
+	background: var(--button-active);
+}
+
+.theme-1159pm .post.reply {
+	background: var(--inner);
+	border: 1px solid var(--highlight);
+}
+.theme-1159pm .post.reply:hover {
+	background: var(--highlight);
+}
+.theme-1159pm .post.highlight {
+	background: var(--highlight); /* FIX: Was var(--) */
+	border: 2px solid var(--faint);
+}
+
+.theme-1159pm .subject { color: var(--title); }
+.theme-1159pm .name { color: var(--faint); }
+.theme-1159pm .postertrip { color: var(--indicator); }
+.theme-1159pm .greentext { color: var(--greentext); }
+.theme-1159pm .omitted, .theme-1159pm .fileText, .theme-1159pm .catalog-stats { color: var(--faint); }
+
+.theme-1159pm .thread.sticky  {
+	border-left: 4px solid var(--indicator);
+}
+.theme-1159pm .thread-status-indicators {
+	color: var(--indicator);
+}
+
+.theme-1159pm .thread.thread-locked .post.op {
+	background: var(--locked-bg); /* FIX: Was none */
+}
+
+.theme-1159pm .form-error {
+	background-color: var(--locked-bg);
+	color: var(--error);
+	border-color: var(--error);
+}
+
+.theme-1159pm .post-actions .user-delete-button {
+	color: var(--error) !important;
+}
+.theme-1159pm .post-actions .user-delete-button:hover {
+	color: var(--error-hover) !important;
+}
+
+.theme-1159pm .postImg {
+	box-shadow: 3px 2px 1px var(--highlight);
+}
+.theme-1159pm .postImg:hover {
+	box-shadow: 6px 4px 1px var(--highlight);
+}
+
+
+.theme-1159pm #post-preview {
+	background: var(--inner);
+	border: var(--cool-border);
+}
+.theme-1159pm .footer, .theme-1159pm .deletion-form {
+	background: var(--bg);
+	border: var(--cool-border);
+}
+
+.theme-1159pm .modal-backdrop { background: rgba(19, 21, 40, 0.8); }
+.theme-1159pm .modal-content {
+	background: var(--bg);
+	border: var(--cool-border);
+}
+
+.theme-1159pm .catalog-item {
+	background: var(--inner);
+	border: 1px solid var(--highlight);
+}
+.theme-1159pm .catalog-item:hover {
+	background: var(--highlight);
+	border-color: var(--faint);
+	transform: translateY(-2px);
+}
+
+.theme-1159pm .moderator-controls {
+	background: var(--highlight);
+	border: 1px solid var(--faint);
+}
+
+.theme-1159pm .moderator-controls {
+	color: var(--text);
+}

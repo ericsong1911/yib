@@ -1,0 +1,181 @@
+<h2>Dashboard</h2>
+<p>Access granted from LAN: {{.RemoteAddr}}</p>
+
+<hr>
+
+<h3>Manual Ban</h3>
+<form action="/mod/ban" method="post" onsubmit="handleManualBan(event)">
+    <input type="hidden" name="csrf_token" value="{{.csrfToken}}" id="manual-ban-csrf">
+    <table>
+        <tbody>
+            <tr><td>IP Hash:</td><td><input type="text" name="ip_hash" id="manual-ban-ip-hash" size="35"></td></tr>
+            <tr><td>Cookie Hash:</td><td><input type="text" name="cookie_hash" id="manual-ban-cookie-hash" size="35"></td></tr>
+            <tr><td>Reason:</td><td><input type="text" name="reason" id="manual-ban-reason" required size="50"></td></tr>
+            <tr><td>Duration (hours):</td><td><input type="number" name="duration" id="manual-ban-duration" value="0" min="0"> (0 for permanent)</td></tr>
+        </tbody>
+    </table>
+    <input type="submit" value="Apply Manual Ban">
+</form>
+<script>
+    function handleManualBan(event) {
+        event.preventDefault();
+        const ipHash = document.getElementById('manual-ban-ip-hash').value;
+        const cookieHash = document.getElementById('manual-ban-cookie-hash').value;
+        const reason = document.getElementById('manual-ban-reason').value;
+        const duration = document.getElementById('manual-ban-duration').value;
+        const csrfToken = document.getElementById('manual-ban-csrf').value;
+
+        if (!ipHash && !cookieHash) {
+            alert('You must provide at least one hash to ban.');
+            return;
+        }
+
+        const data = { ip_hash: ipHash, cookie_hash: cookieHash, reason, duration, csrf_token: csrfToken };
+        const formData = new URLSearchParams(data);
+
+        fetch('/mod/ban', { method: 'POST', body: formData })
+            .then(res => res.json())
+            .then(result => {
+                if (result.error) {
+                    alert('Error: ' + result.error);
+                } else {
+                    alert('Success: ' + result.success);
+                    event.target.reset();
+                }
+            })
+            .catch(err => alert('Network error: ' + err.message));
+    }
+</script>
+
+
+<hr>
+
+<h3>Create New Board</h3>
+<form action="/mod/create-board" method="post">
+    <input type="hidden" name="csrf_token" value="{{.csrfToken}}">
+    <table>
+        <tbody>
+            <tr><td>Board ID:</td><td><input type="text" name="id" pattern="[a-z0-9]{1,10}" required title="1-10 lowercase letters/numbers only."> (e.g., 'g', 'tech')</td></tr>
+            <tr><td>Name:</td><td><input type="text" name="name" required> (e.g., 'Technology')</td></tr>
+            <tr><td>Description:</td><td><input type="text" name="description" size="50"></td></tr>
+            <tr><td>Category:</td><td>
+                <select name="category_id">
+                    {{range .Categories}}
+                        <option value="{{.ID}}">{{.Name}}</option>
+                    {{end}}
+                </select>
+            </td></tr>
+            <tr><td>Password:</td><td><input type="password" name="password" placeholder="Leave blank for no password"></td></tr>
+            <tr><td>Require Password:</td><td><input type="checkbox" name="require_pass"> (Enable password protection)</td></tr>
+            <tr><td>Max Threads:</td><td><input type="number" name="max_threads" value="100" min="10"></td></tr>
+            <tr><td>Bump Limit:</td><td><input type="number" name="bump_limit" value="500" min="50"></td></tr>
+            <tr><td>Image Required:</td><td><input type="checkbox" name="image_required"> (For new threads)</td></tr>
+            <tr><td>Color Scheme:</td><td>
+                <select name="color_scheme">
+                    <option value="yalie-blue">Yalie Blue</option>
+                    <option value="lullaby">Lullaby</option>
+                    <option value="1159pm">11:59 PM</option>
+                    <option value="tomorrow-night">Tomorrow Night</option>
+                    <option value="photon">Photon</option>
+                    <option value="futaba">Futaba</option>
+                </select>
+            </td></tr>
+        </tbody>
+    </table>
+    <input type="submit" value="Create Board">
+</form>
+
+<hr>
+
+<h2>Board & Category Management</h2>
+<p>Change board order, category, or category order. To delete a category, clear its name and save (boards will be moved to General).</p>
+<form action="/mod/manage-categories" method="post" style="margin-top: 15px;">
+    <input type="hidden" name="csrf_token" value="{{.csrfToken}}">
+    
+    <h3 style="margin-bottom: 10px;">Categories</h3>
+    {{range .Categories}}
+    <div style="margin-bottom: 5px;">
+        Order: <input type="number" name="order-{{.ID}}" value="{{.SortOrder}}" style="width: 50px;">
+        Name: <input type="text" name="name-{{.ID}}" value="{{.Name}}" {{if eq .ID 1}}readonly{{end}}> {{if eq .ID 1}}(Cannot delete General){{end}}
+    </div>
+    {{end}}
+    <div style="margin-top: 10px;">
+        Order: <input type="number" name="order-0" value="99" style="width: 50px;">
+        New Category: <input type="text" name="name-0" placeholder="Enter name to create">
+    </div>
+
+    <h3 style="margin-top: 20px;">Boards</h3>
+    <div class="board-management-list">
+        {{range .Boards}}
+        <div class="board-item">
+            <span>/{{.ID}}/ - {{.Name}}</span>
+            <div>
+                Order: <input type="number" name="board_order-{{.ID}}" value="{{.SortOrder}}" style="width: 50px;">
+                Category: 
+                <select name="board_cat-{{.ID}}">
+                    {{$currentBoardCategoryID := .CategoryID}}
+                    {{range $.Categories}}
+                        <option value="{{.ID}}" {{if eq .ID $currentBoardCategoryID}}selected{{end}}>{{.Name}}</option>
+                    {{end}}
+                </select>
+                <a href="/mod/edit-board?id={{.ID}}" style="margin-left: 10px;">Edit Details</a>
+                <button type="submit" name="board_id" value="{{.ID}}"
+                        formaction="/mod/delete-board" formmethod="post"
+                        onclick="return confirm('WARNING: Are you sure you want to permanently delete the board /{{.ID}}/? This will delete all threads, posts, and images and cannot be undone.');"
+                        class="moderator-controls-delete-button" style="display: inline; margin-left: 10px;">
+                    Delete
+                </button>
+            </div>
+        </div>
+        {{end}}
+    </div>
+    <input type="submit" value="Save All Changes" style="margin-top: 20px;">
+</form>
+
+<hr>
+
+<h3>Active Reports</h3>
+<table>
+    <thead><tr><th>Post</th><th>Reason</th><th>Reporter IP Hash</th><th>Time</th><th>Action</th></tr></thead>
+    <tbody>
+    {{range .Reports}}
+        <tr>
+            <td><a href="/{{.Post.BoardID}}/thread/{{.Post.ThreadID}}#p{{.Post.ID}}" target="_blank">/{{.Post.BoardID}}/ No.{{.Post.ID}}</a></td>
+            <td>{{.Reason}}</td>
+            <td><a href="/mod/lookup?ip_hash={{.IPHash}}" target="_blank">{{.IPHash}}</a></td>
+            <td><time class="post-time" datetime="{{.CreatedAt | formatISO}}">{{.CreatedAt | formatTime}}</time></td>
+            <td><form action="/mod/resolve-report" method="post"><input type="hidden" name="csrf_token" value="{{$.csrfToken}}"><input type="hidden" name="report_id" value="{{.ID}}"><input type="submit" value="Resolve"></form></td>
+        </tr>
+    {{else}}
+        <tr><td colspan="5">No active reports.</td></tr>
+    {{end}}
+    </tbody>
+</table>
+
+<hr>
+
+<h3>Recent Posts</h3>
+<table>
+<thead><tr><th>Post</th><th>User</th><th>Poster Hashes</th><th>Content</th><th>Time</th><th>Actions</th></tr></thead>
+<tbody>
+{{range .RecentPosts}}
+<tr>
+    <td><a href="/{{.BoardID}}/thread/{{.ThreadID}}#p{{.ID}}" target="_blank">/{{.BoardID}}/ No.{{.ID}}</a></td>
+    <td>{{.Name | default "Anonymous"}}{{if .Tripcode}}<br>{{.Tripcode}}{{end}}</td>
+    <td>
+        IP: <a href="/mod/lookup?ip_hash={{.IPHash}}">{{.IPHash}}</a><br>
+        Cookie: <a href="/mod/lookup?cookie_hash={{.CookieHash}}">{{.CookieHash}}</a>
+    </td>
+    <td>{{.Content | stripHTML | truncate 100}}</td>
+    <td><time class="post-time" datetime="{{.Timestamp | formatISO}}">{{.Timestamp | formatTime}}</time></td>
+    <td>
+        <form action="/mod/delete-post" method="post" onsubmit="return confirm('Delete this post?')"><input type="hidden" name="csrf_token" value="{{$.csrfToken}}"><input type="hidden" name="post_id" value="{{.ID}}"><input type="submit" value="Delete"></form>
+        <button type="button" class="ban-link" 
+            data-ip-hash="{{.IPHash}}" 
+            data-cookie-hash="{{.CookieHash}}" 
+            data-csrf-token="{{$.csrfToken}}">Ban Poster</button>
+    </td>
+</tr>
+{{end}}
+</tbody>
+</table>

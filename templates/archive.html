@@ -1,0 +1,25 @@
+<h2>Archived Threads for /{{.BoardID}}/</h2>
+<table class="archive-table">
+    <thead>
+        <tr>
+            <th>Thread</th>
+            <th>Subject</th>
+            <th>Replies</th>
+            <th>Last Post</th>
+        </tr>
+    </thead>
+    <tbody>
+        {{range .Threads}}
+        <tr>
+            <td><a href="/{{.BoardID}}/thread/{{.ID}}">No. {{.ID}}</a></td>
+            <td>{{.Subject | default "..."}}</td>
+            <td>{{.ReplyCount}}</td>
+            <td><time class="post-time" datetime="{{.Bump | formatISO}}">{{.Bump | formatTime}}</time></td>
+        </tr>
+        {{else}}
+        <tr><td colspan="4">No archived threads found for this board.</td></tr>
+        {{end}}
+    </tbody>
+</table>
+
+{{template "pagination" .Pagination}}

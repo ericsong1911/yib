@@ -1,0 +1,127 @@
+/* ===========================
+   Theme: Photon (Modern Light)
+   =========================== */
+body.theme-photon { background-color: #f9f9f9; color: #333; }
+.theme-photon hr { background-color: #eee; }
+.theme-photon a { color: #ff6600; }
+.theme-photon a:hover { color: #cc3300; }
+
+.theme-photon .boardHeader { color: #333; }
+.theme-photon .boardTitle { 
+    color: #ff6600;
+    text-shadow: 1px 1px 2px rgba(255,102,0,0.08);
+}
+.theme-photon .boardSubtitle { color: #666; }
+.theme-photon .navLinks { background: rgba(255,255,255,0.5); }
+.theme-photon .navLinks a { color: #ff6600; }
+
+.theme-photon .boardlist-header { 
+    background: #333;
+    color: #fff;
+}
+.theme-photon .board-entry { 
+    background-color: #fff;
+    border: 1px solid #e5e5e5;
+}
+.theme-photon .board-entry:hover {
+    background: #fcfcfc;
+}
+.theme-photon .board-desc { color: #666; }
+
+.theme-photon .postForm form { 
+    background: #fff;
+    border: 1px solid #e5e5e5;
+}
+.theme-photon .postForm td:first-child { 
+    background: #f5f5f5;
+    color: #333;
+}
+.theme-photon .postForm input[type="text"],
+.theme-photon .postForm input[type="password"],
+.theme-photon .postForm textarea {
+    background: #fff;
+    border: 1px solid #ddd;
+}
+.theme-photon .postForm input[type="text"]:focus,
+.theme-photon .postForm input[type="password"]:focus,
+.theme-photon .postForm textarea:focus {
+    border-color: #ff6600;
+    box-shadow: 0 0 0 2px rgba(255,102,0,0.08);
+}
+.theme-photon .rules { color: #666; }
+
+.theme-photon input[type="submit"],
+.theme-photon input[type="button"],
+.theme-photon button {
+    background: #ff6600;
+    color: #fff;
+}
+.theme-photon input[type="submit"]:hover,
+.theme-photon input[type="button"]:hover,
+.theme-photon button:hover {
+    background: #e55a00;
+}
+.theme-photon input[type="submit"]:active,
+.theme-photon input[type="button"]:active,
+.theme-photon button:active {
+    background: #cc5200;
+}
+
+.theme-photon .post.reply { 
+    background: #fff;
+    border: 1px solid #e5e5e5;
+}
+.theme-photon .post.reply:hover {
+    background: #fcfcfc;
+}
+.theme-photon .post.highlight { 
+    background: #fff8f0;
+    border-color: #ff6600;
+}
+
+.theme-photon .subject { color: #0066cc; }
+.theme-photon .name { color: #117743; }
+.theme-photon .postertrip { color: #0066cc; }
+.theme-photon .greentext { color: #789922; }
+.theme-photon .omitted, .theme-photon .fileText, .theme-photon .catalog-stats { color: #777; }
+
+.theme-photon .postImg {
+    box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+}
+.theme-photon .postImg:hover {
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.theme-photon #post-preview { 
+    background: #fff;
+    border: 1px solid #ff6600;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+}
+.theme-photon .footer, .theme-photon .deletion-form { 
+    background: rgba(255,255,255,0.5);
+    border: 1px solid #e5e5e5;
+}
+
+.theme-photon .modal-backdrop { background: rgba(0, 0, 0, 0.5); }
+.theme-photon .modal-content { 
+    background: #fff;
+    border: 1px solid #ff6600;
+}
+
+.theme-photon .catalog-item {
+    background: #fff;
+}
+.theme-photon .catalog-item:hover {
+    background: #fcfcfc;
+    transform: translateY(-2px);
+}
+
+.theme-photon .moderator-controls {
+    background: rgba(255,255,255,0.9);
+    border: 1px solid #e5e5e5;
+}
+
+/* CORRECTED: Fix for moderator action link colors */
+.theme-photon .moderator-controls {
+    color: #ff6600;
+}

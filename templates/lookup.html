@@ -1,0 +1,59 @@
+<h2>Unified Lookup</h2>
+
+<p>
+    {{if .IPHash}}IP Hash: <code>{{.IPHash}}</code>{{end}}
+    {{if .CookieHash}}Cookie Hash: <code>{{.CookieHash}}</code>{{end}}
+</p>
+
+{{if .Results.IP}}
+<hr>
+<h3>{{.Results.IP.Title}}</h3>
+{{if .Results.IP.Posts}}
+<table>
+    <thead><tr><th>Post</th><th>User</th><th>Cookie Hash</th><th>Content</th><th>Time</th><th>Actions</th></tr></thead>
+    <tbody>
+    {{range .Results.IP.Posts}}
+    <tr>
+        <td><a href="/{{.BoardID}}/thread/{{.ThreadID}}#p{{.ID}}" target="_blank">/{{.BoardID}}/ No.{{.ID}}</a></td>
+        <td>{{.Name | default "Anonymous"}}{{if .Tripcode}}<br>{{.Tripcode}}{{end}}</td>
+        <td><a href="/mod/lookup?cookie_hash={{.CookieHash}}">{{.CookieHash}}</a></td>
+        <td>{{.Content | stripHTML | truncate 100}}</td>
+        <td><time class="post-time" datetime="{{.Timestamp | formatISO}}">{{.Timestamp | formatTime}}</time></td>
+        <td>
+            <form action="/mod/delete-post" method="post" onsubmit="return confirm('Delete this post?')"><input type="hidden" name="csrf_token" value="{{$.csrfToken}}"><input type="hidden" name="post_id" value="{{.ID}}"><input type="submit" value="Delete"></form>
+        </td>
+    </tr>
+    {{end}}
+    </tbody>
+</table>
+{{else}}
+<p>No posts found for this IP hash.</p>
+{{end}}
+{{end}}
+
+
+{{if .Results.Cookie}}
+<hr>
+<h3>{{.Results.Cookie.Title}}</h3>
+{{if .Results.Cookie.Posts}}
+<table>
+    <thead><tr><th>Post</th><th>User</th><th>IP Hash</th><th>Content</th><th>Time</th><th>Actions</th></tr></thead>
+    <tbody>
+    {{range .Results.Cookie.Posts}}
+    <tr>
+        <td><a href="/{{.BoardID}}/thread/{{.ThreadID}}#p{{.ID}}" target="_blank">/{{.BoardID}}/ No.{{.ID}}</a></td>
+        <td>{{.Name | default "Anonymous"}}{{if .Tripcode}}<br>{{.Tripcode}}{{end}}</td>
+        <td><a href="/mod/lookup?ip_hash={{.IPHash}}">{{.IPHash}}</a></td>
+        <td>{{.Content | stripHTML | truncate 100}}</td>
+        <td><time class="post-time" datetime="{{.Timestamp | formatISO}}">{{.Timestamp | formatTime}}</time></td>
+        <td>
+            <form action="/mod/delete-post" method="post" onsubmit="return confirm('Delete this post?')"><input type="hidden" name="csrf_token" value="{{$.csrfToken}}"><input type="hidden" name="post_id" value="{{.ID}}"><input type="submit" value="Delete"></form>
+        </td>
+    </tr>
+    {{end}}
+    </tbody>
+</table>
+{{else}}
+<p>No posts found for this cookie hash.</p>
+{{end}}
+{{end}}

@@ -1,0 +1,30 @@
+{{define "mod_layout.html"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{{.Title}} - Mod Panel</title>
+    <!-- Load the base stylesheet -->
+    <link rel="stylesheet" href="/static/style.css">
+    <!-- Load the theme-specific stylesheet -->
+    <link rel="stylesheet" href="/static/themes/{{default "yalie-blue" .ColorScheme}}.css">
+</head>
+<!-- Add the theme class to the body -->
+<body class="mod-panel theme-{{default "yalie-blue" .ColorScheme}}">
+    <h1>yib Moderation</h1>
+    <div class="navLinks">
+        [<a href="/">Home</a>]
+        [<a href="/mod/">Dashboard</a>]
+        [<a href="/mod/bans">Ban List</a>]
+        [<a href="/mod/log">Action Log</a>]
+        [<a href="/mod/banner">Global Banner</a>]
+    </div>
+    <hr>
+    <main>
+        {{.Content}}
+    </main>
+
+    <script src="/static/dist/board.min.js"></script>
+</body>
+</html>
+{{end}}

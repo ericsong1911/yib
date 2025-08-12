@@ -1,0 +1,39 @@
+<div id="content-container">
+    <div class="thread {{if .Thread.Sticky}}sticky{{end}} {{if .Thread.Locked}}thread-locked{{end}}" id="t{{.Thread.ID}}">
+        <div class="thread-controls">
+            <span class="post-actions">[<a href="#" class="hide-thread-link" data-thread-id="{{.Thread.ID}}">Hide</a>]</span>
+            <span class="thread-status-indicators">
+                {{if .Thread.Sticky}}<span>📌 Sticky</span>{{end}}
+                {{if .Thread.Locked}}<span>🔒 Locked</span>{{end}}
+            </span>
+            {{if .IsModerator}}
+            <span class="moderator-controls">
+                <form action="/mod/toggle-sticky" method="post">
+                    <input type="hidden" name="csrf_token" value="{{.csrfToken}}">
+                    <input type="hidden" name="thread_id" value="{{.Thread.ID}}">
+                    <input type="submit" value="{{if .Thread.Sticky}}Unsticky{{else}}Sticky{{end}}">
+                </form>
+                <form action="/mod/toggle-lock" method="post">
+                    <input type="hidden" name="csrf_token" value="{{.csrfToken}}">
+                    <input type="hidden" name="thread_id" value="{{.Thread.ID}}">
+                    <input type="submit" value="{{if .Locked}}Unlock{{else}}Lock{{end}}">
+                </form>
+            </span>
+            {{end}}
+        </div>
+
+        {{range .Thread.Posts}}
+            {{template "post" (dict "Post" . "csrfToken" $.csrfToken "IsModerator" $.IsModerator "CurrentUserCookieHash" $.CurrentUserCookieHash "IsThreadView" true)}}
+        {{end}}
+    </div>
+</div>
+<hr>
+
+{{if .FormError}}
+<div class="form-error">Error: {{.FormError | safeHTML}}</div>
+{{end}}
+{{if not .Thread.Locked}}
+    {{template "postform" (dict "BoardID" .BoardID "ThreadID" .Thread.ID "csrfToken" .csrfToken "ChallengeQuestion" .ChallengeQuestion "ChallengeToken" .ChallengeToken "FormInput" .FormInput "BoardConfig" .BoardConfig "MaxFileSizeMB" .MaxFileSizeMB)}}
+{{else}}
+<div style="text-align: center; font-weight: bold; margin: 20px; color: #d32f2f;">[Thread is Locked]</div>
+{{end}}

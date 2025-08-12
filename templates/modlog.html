@@ -1,0 +1,28 @@
+<h2>Moderator Action Log</h2>
+
+<table class="modlog-table">
+    <thead>
+        <tr>
+            <th>Timestamp</th>
+            <th>Moderator Hash</th>
+            <th>Action</th>
+            <th>Target ID</th>
+            <th>Details</th>
+        </tr>
+    </thead>
+    <tbody>
+        {{range .Logs}}
+        <tr>
+            <td><time class="post-time" datetime="{{.Timestamp | formatISO}}">{{.Timestamp | formatTime}}</time></td>
+            <td>{{.ModeratorHash}}</td>
+            <td>{{.Action}}</td>
+            <td>{{if .TargetID.Valid}}{{.TargetID.Int64}}{{else}}N/A{{end}}</td>
+            <td><small>{{if .Details.Valid}}{{.Details.String}}{{end}}</small></td>
+        </tr>
+        {{else}}
+        <tr><td colspan="5">No log entries found.</td></tr>
+        {{end}}
+    </tbody>
+</table>
+
+{{template "pagination" .Pagination}}

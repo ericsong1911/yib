@@ -1,0 +1,12 @@
+<h2>Edit Global Banner</h2>
+<p>
+    Set a site-wide message that will appear at the top of every page.
+    Leave the field blank and save to remove the banner.
+</p>
+
+<form action="/mod/banner" method="post" style="margin-top: 20px;">
+    <input type="hidden" name="csrf_token" value="{{.csrfToken}}">
+    <textarea name="banner_content" style="width: 80%; height: 150px; font-family: monospace;">{{.BannerContent}}</textarea>
+    <br><br>
+    <input type="submit" value="Save Banner">
+</form>

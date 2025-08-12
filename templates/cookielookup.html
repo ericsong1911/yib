@@ -1,0 +1,20 @@
+<h2>Post History for Cookie Hash: {{.CookieHash}}</h2>
+<table>
+<thead><tr><th>Post</th><th>User</th><th>IP Hash</th><th>Content</th><th>Time</th><th>Actions</th></tr></thead>
+<tbody>
+{{range .Posts}}
+<tr>
+    <td><a href="/{{.BoardID}}/thread/{{.ThreadID}}#p{{.ID}}" target="_blank">/{{.BoardID}}/ No.{{.ID}}</a></td>
+    <td>{{.Name | default "Anonymous"}}{{if .Tripcode}}<br>{{.Tripcode}}{{end}}</td>
+    <td><a href="/mod/ip-lookup?ip_hash={{.IPHash}}">{{.IPHash}}</a></td>
+    <td>{{.Content | stripHTML | truncate 100}}</td>
+    <td>{{.Timestamp | formatTime}}</td>
+    <td>
+        <form action="/mod/delete-post" method="post" onsubmit="return confirm('Delete this post?')"><input type="hidden" name="csrf_token" value="{{$.csrfToken}}"><input type="hidden" name="post_id" value="{{.ID}}"><input type="submit" value="Delete"></form>
+    </td>
+</tr>
+{{else}}
+<tr><td colspan="6">No posts found for this cookie hash.</td></tr>
+{{end}}
+</tbody>
+</table>
