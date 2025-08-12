@@ -49,6 +49,7 @@ jobs:
           GOOS: ${{ matrix.os }}
           GOARCH: ${{ matrix.arch }}
         run: |
+          go mod tidy
           echo "Building for ${{ matrix.os }}/${{ matrix.arch }}..."
           # The -ldflags="-s -w" part strips debug information, making the binary smaller.
           # The -tags="sqlite_fts5" part is crucial for including the search module.
