@@ -718,9 +718,9 @@ html { scroll-behavior: smooth; }
 
 /* Banner */
 .global-banner {
-    background-color: #e57373; 
+    background-color: #7b2525; 
     color: #ffffff;
-    border-bottom: 2px solid #d32f2f;
+    border-bottom: 2px solid #380909;
     padding: 12px;
     text-align: center;
     font-size: 10pt;

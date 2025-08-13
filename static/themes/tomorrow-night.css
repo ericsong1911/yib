@@ -128,3 +128,13 @@ body.theme-tomorrow-night { background-color: #1d1f21; color: #c5c8c6; }
 .theme-tomorrow-night .moderator-controls {
     color: #81a2be;
 }
+
+.theme-lullaby .thread.thread-locked .post.op {
+    background: #81a2be;
+}
+
+.theme-lullaby .form-error {
+    background-color: #81a2be;
+    color: #c1264d;
+    border-color: #c1264d;
+}
