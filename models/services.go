@@ -94,24 +94,17 @@ func (cs *ChallengeStore) GenerateChallenge() (token, question string) {
 
 // Verify checks if a challenge answer is correct for a given token.
 func (cs *ChallengeStore) Verify(token, answer string) bool {
-	cs.Mu.RLock()
+	cs.Mu.Lock() // Use a full write lock to safely read and delete
+	defer cs.Mu.Unlock()
+
 	correctAnswer, exists := cs.Challenges[token]
-	cs.Mu.RUnlock()
+	
+	delete(cs.Challenges, token)
 
 	if !exists {
-		return false // Token doesn't exist or has expired.
+		return false // Token was invalid, expired, or already used.
 	}
 
-	// The token is only deleted if the answer is correct.
-	// This prevents the "one-time-use" bug.
-	if subtle.ConstantTimeCompare([]byte(answer), []byte(correctAnswer)) == 1 {
-		// Answer is correct, now we can safely delete the token.
-		cs.Mu.Lock()
-		delete(cs.Challenges, token)
-		cs.Mu.Unlock()
-		return true
-	}
-
-	// If we reach here, the answer was incorrect. We do NOT delete the token.
-	return false
+	// Finally, perform the comparison on the retrieved answer.
+	return subtle.ConstantTimeCompare([]byte(answer), []byte(correctAnswer)) == 1
 }

@@ -71,7 +71,15 @@ func HandlePost(w http.ResponseWriter, r *http.Request, app App) {
 		return
 	}
 	if !app.Challenges().Verify(r.FormValue("challenge_token"), r.FormValue("challenge_answer")) {
-		respondJSON(w, http.StatusForbidden, map[string]string{"error": "Invalid challenge answer. Please try again."})
+        // Verification failed. Generate a NEW challenge for the user.
+        newToken, newQuestion := app.Challenges().GenerateChallenge()
+		
+        // Respond with the error AND the new challenge data.
+        respondJSON(w, http.StatusForbidden, map[string]string{
+            "error": "Invalid challenge answer. Please try again.",
+            "newToken": newToken,
+            "newQuestion": newQuestion,
+        })
 		return
 	}
 
