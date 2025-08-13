@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 	"yib/config"
+	"yib/models"
 	"yib/utils"
 
 	"github.com/disintegration/imaging"
@@ -30,7 +31,19 @@ import (
 
 // HandlePost is the main handler for creating new threads and replies.
 func HandlePost(w http.ResponseWriter, r *http.Request, app App) {
+	// We will capture the user's input here in case of an error, but we will
+	// respond with JSON, not a full page render.
+	userInput := &models.FormInput{
+		Name:    r.FormValue("name"),
+		Subject: r.FormValue("subject"),
+		Content: r.FormValue("content"),
+	}
+
 	if err := r.ParseMultipartForm(config.MaxFileSize + 1024); err != nil {
+		// This check is now redundant because of the above, but harmless.
+		if userInput.Content == "" {
+			userInput.Content = r.FormValue("content")
+		}
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Form parsing error: " + err.Error()})
 		return
 	}
@@ -61,6 +74,7 @@ func HandlePost(w http.ResponseWriter, r *http.Request, app App) {
 		respondJSON(w, http.StatusForbidden, map[string]string{"error": "Invalid challenge answer. Please try again."})
 		return
 	}
+
 	boardConfig, err := app.DB().GetBoard(boardID)
 	if err != nil {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Board not found."})
@@ -205,7 +219,6 @@ func HandleCookieDelete(w http.ResponseWriter, r *http.Request, app App) {
 		return
 	}
 
-	// Provide empty strings for modHash and details, as this is a user action, not a mod action.
 	_, isOp, err := app.DB().DeletePost(postID, app.UploadDir(), "", "")
 	if err != nil {
 		log.Printf("ERROR: Failed to delete post %d by user request: %v", postID, err)
@@ -279,7 +292,7 @@ func processImage(r *http.Request, app App) (path, hashStr string, hasImage bool
 	var existingPath string
 	err = app.DB().DB.QueryRow("SELECT image_path FROM posts WHERE image_hash = ?", hashStr).Scan(&existingPath)
 	if err == nil {
-		return existingPath, hashStr, true, nil // Found duplicate, success
+		return existingPath, hashStr, true, nil
 	}
 	if err != sql.ErrNoRows {
 		log.Printf("ERROR: Failed to check for existing image hash: %v", err)
@@ -293,17 +306,14 @@ func processImage(r *http.Request, app App) (path, hashStr string, hasImage bool
 	if format != "jpeg" && format != "png" && format != "gif" && format != "webp" {
 		return "", "", true, fmt.Errorf("unsupported image format: %s", format)
 	}
-
 	if cfg.Width > config.MaxWidth || cfg.Height > config.MaxHeight {
 		return "", "", true, fmt.Errorf("image dimensions (%dx%d) exceed maximum (%dx%d)", cfg.Width, cfg.Height, config.MaxWidth, config.MaxHeight)
 	}
 
-	// Rewind the reader to be read again by the full decoder
 	if _, err := reader.Seek(0, 0); err != nil {
 		return "", "", true, fmt.Errorf("could not reset reader position: %w", err)
 	}
 
-	// Use imaging.Decode which automatically corrects orientation from EXIF data.
 	img, err := imaging.Decode(reader, imaging.AutoOrientation(true))
 	if err != nil {
 		return "", "", true, fmt.Errorf("failed to decode image with orientation correction: %w", err)
@@ -324,7 +334,6 @@ func processImage(r *http.Request, app App) (path, hashStr string, hasImage bool
 
 	switch outputFormat {
 	case "jpeg":
-		// Use imaging.Encode which is a wrapper around the standard library
 		err = imaging.Encode(out, img, imaging.JPEG, imaging.JPEGQuality(90))
 	case "png":
 		err = imaging.Encode(out, img, imaging.PNG)
