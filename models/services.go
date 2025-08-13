@@ -1,3 +1,4 @@
+// yib/models/services.go
 package models
 
 import (
@@ -98,12 +99,19 @@ func (cs *ChallengeStore) Verify(token, answer string) bool {
 	cs.Mu.RUnlock()
 
 	if !exists {
-		return false
+		return false // Token doesn't exist or has expired.
 	}
 
-	cs.Mu.Lock()
-	delete(cs.Challenges, token)
-	cs.Mu.Unlock()
+	// The token is only deleted if the answer is correct.
+	// This prevents the "one-time-use" bug.
+	if subtle.ConstantTimeCompare([]byte(answer), []byte(correctAnswer)) == 1 {
+		// Answer is correct, now we can safely delete the token.
+		cs.Mu.Lock()
+		delete(cs.Challenges, token)
+		cs.Mu.Unlock()
+		return true
+	}
 
-	return subtle.ConstantTimeCompare([]byte(answer), []byte(correctAnswer)) == 1
+	// If we reach here, the answer was incorrect. We do NOT delete the token.
+	return false
 }

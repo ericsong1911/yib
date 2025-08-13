@@ -10,8 +10,8 @@ import (
 	"fmt"
 	"html/template"
 	"image"
-	"image/jpeg"
-	"image/png"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"log"
 	"net/http"
@@ -24,6 +24,7 @@ import (
 	"yib/config"
 	"yib/utils"
 
+	"github.com/disintegration/imaging"
 	_ "golang.org/x/image/webp"
 )
 
@@ -296,13 +297,18 @@ func processImage(r *http.Request, app App) (path, hashStr string, hasImage bool
 	if cfg.Width > config.MaxWidth || cfg.Height > config.MaxHeight {
 		return "", "", true, fmt.Errorf("image dimensions (%dx%d) exceed maximum (%dx%d)", cfg.Width, cfg.Height, config.MaxWidth, config.MaxHeight)
 	}
+
+	// Rewind the reader to be read again by the full decoder
 	if _, err := reader.Seek(0, 0); err != nil {
 		return "", "", true, fmt.Errorf("could not reset reader position: %w", err)
 	}
-	img, _, err := image.Decode(reader)
+
+	// Use imaging.Decode which automatically corrects orientation from EXIF data.
+	img, err := imaging.Decode(reader, imaging.AutoOrientation(true))
 	if err != nil {
-		return "", "", true, fmt.Errorf("failed to decode image: %w", err)
+		return "", "", true, fmt.Errorf("failed to decode image with orientation correction: %w", err)
 	}
+
 	outputFormat := format
 	if format == "webp" || format == "gif" {
 		outputFormat = "jpeg"
@@ -318,9 +324,10 @@ func processImage(r *http.Request, app App) (path, hashStr string, hasImage bool
 
 	switch outputFormat {
 	case "jpeg":
-		err = jpeg.Encode(out, img, &jpeg.Options{Quality: 90})
+		// Use imaging.Encode which is a wrapper around the standard library
+		err = imaging.Encode(out, img, imaging.JPEG, imaging.JPEGQuality(90))
 	case "png":
-		err = png.Encode(out, img)
+		err = imaging.Encode(out, img, imaging.PNG)
 	}
 	if err != nil {
 		if rerr := os.Remove(outputPath); rerr != nil {

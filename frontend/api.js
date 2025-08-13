@@ -36,6 +36,17 @@ export async function submitPostForm(form) {
     }
 }
 
+export async function fetchNewChallenge() {
+    try {
+        const response = await fetch('/api/challenge');
+        if (!response.ok) return null;
+        return await response.json();
+    } catch (error) {
+        console.error("Failed to fetch new challenge:", error);
+        return null;
+    }
+}
+
 export async function fetchPostPreviewHTML(numericId) {
     try {
         const response = await fetch(`/api/post/${numericId}`);

@@ -2,7 +2,7 @@
 
 import Modal from './modal.js';
 import { state } from './state.js';
-import { submitPostForm, handleApiSubmit } from './api.js';
+import { submitPostForm, handleApiSubmit, fetchNewChallenge } from './api.js';
 import {
     applyStatefulDOMChanges,
     toggleImageSize,
@@ -11,8 +11,6 @@ import {
     quote
 } from './dom.js';
 import { showPreview, hidePreview } from './preview.js';
-
-// --- App Logic (non-DOM, non-API) ---
 
 function saveNameToHistory(name) {
     let history = JSON.parse(localStorage.getItem('yib_nameHistory')) || [];
@@ -40,7 +38,7 @@ async function refreshContent() {
 
         if (currentContainer && newContainer) {
             currentContainer.innerHTML = newContainer.innerHTML;
-            applyStatefulDOMChanges(); // Re-apply JS-dependent states
+            applyStatefulDOMChanges();
         }
     } catch (error) {
         stopAutoRefresh();
@@ -60,8 +58,6 @@ function stopAutoRefresh() {
     clearInterval(state.autoRefreshTimer);
     state.autoRefreshTimer = null;
 }
-
-// --- Modals ---
 
 function showReportModal(postId) {
     const csrfToken = document.querySelector('#postform-csrf-token')?.value;
@@ -91,8 +87,6 @@ function showBanModal(link) {
         }}
     ]).show();
 }
-
-// --- Event Handlers & Initializers ---
 
 function handleGlobalClick(e) {
     const target = e.target;
@@ -131,10 +125,8 @@ function initAutoRefresh() {
     const checkbox = document.getElementById('auto-refresh-checkbox');
     const intervalInput = document.getElementById('auto-refresh-interval');
     if (!checkbox || !intervalInput) return;
-
     const savedInterval = localStorage.getItem('yib_refreshInterval');
     if (savedInterval) intervalInput.value = savedInterval;
-
     if (localStorage.getItem('yib_refreshEnabled') === 'true') {
         checkbox.checked = true;
         startAutoRefresh();
@@ -157,7 +149,6 @@ function initThemeSwitcher() {
     const body = document.body;
     const themeLink = document.getElementById('theme-link');
     const defaultTheme = body.dataset.defaultTheme;
-
     function applyTheme(theme) {
         if (theme === 'default' || !theme) {
             theme = defaultTheme;
@@ -167,9 +158,7 @@ function initThemeSwitcher() {
     }
     const savedTheme = localStorage.getItem('yib_theme') || 'default';
     if (switcher) switcher.value = savedTheme;
-
     applyTheme(savedTheme);
-
     switcher?.addEventListener('change', () => {
         const selectedTheme = switcher.value;
         localStorage.setItem('yib_theme', selectedTheme);
@@ -181,7 +170,6 @@ function initNameHistory() {
     const container = document.querySelector('.name-history-container');
     const nameInput = container?.querySelector('input[name="name"]');
     if (!container || !nameInput) return;
-
     const history = JSON.parse(localStorage.getItem('yib_nameHistory')) || [];
     if (history.length > 0) {
         const dropdown = document.createElement('div');
@@ -203,15 +191,12 @@ function initNameHistory() {
     }
 }
 
-// --- Main Initialization Function ---
 function init() {
-    // Attach event listeners
     document.addEventListener('click', handleGlobalClick);
     document.addEventListener('mouseover', handleGlobalMouseOver);
     document.addEventListener('mouseout', handleGlobalMouseOut);
     window.addEventListener('hashchange', highlightTargetPost);
 
-    // Initialize post form
     const postForm = document.querySelector('.postForm > form');
     postForm?.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -225,21 +210,32 @@ function init() {
             if (nameInput && nameInput.value) {
                 saveNameToHistory(nameInput.value);
             }
-
             const currentUrl = new URL(window.location.href);
             const redirectUrl = new URL(result.redirect, window.location.origin);
-
             if (currentUrl.pathname === redirectUrl.pathname) {
                 window.location.assign(result.redirect);
                 window.location.reload();
             } else {
                 window.location.assign(result.redirect);
             }
-            
-            return; // Stop execution
+            return;
         }
 
-        // This code only executes if the post submission failed.
+        if (result && result.error && result.error.includes("Invalid challenge answer")) {
+            const newChallenge = await fetchNewChallenge();
+            if (newChallenge) {
+                const tokenInput = postForm.querySelector('input[name="challenge_token"]');
+                const answerInput = postForm.querySelector('input[name="challenge_answer"]');
+                const questionEl = document.getElementById('challenge-question');
+
+                if (tokenInput && answerInput && questionEl) {
+                    tokenInput.value = newChallenge.token;
+                    questionEl.textContent = newChallenge.question;
+                    answerInput.value = '';
+                }
+            }
+        }
+        
         state.isUserActionInProgress = false;
         const checkbox = document.getElementById('auto-refresh-checkbox');
         if (checkbox && checkbox.checked) {
@@ -247,16 +243,12 @@ function init() {
         }
     });
 
-    // Initialize UI components
     initAutoRefresh();
     initThemeSwitcher();
     initNameHistory();
-
-    // Apply initial state to the DOM
     applyStatefulDOMChanges();
 }
 
-// --- Run Initialization ---
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
 } else {

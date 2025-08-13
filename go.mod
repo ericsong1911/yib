@@ -3,6 +3,7 @@ module yib
 go 1.18
 
 require (
+	github.com/disintegration/imaging v1.6.2
 	github.com/go-chi/chi/v5 v5.0.12
 	github.com/google/uuid v1.6.0
 	github.com/mattn/go-sqlite3 v1.14.30

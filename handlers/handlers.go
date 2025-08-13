@@ -50,6 +50,16 @@ func MakeHandler(app App, fn func(http.ResponseWriter, *http.Request, App)) http
 	}
 }
 
+// HandleNewChallenge generates a new challenge and returns it as JSON.
+func HandleNewChallenge(w http.ResponseWriter, r *http.Request, app App) {
+	token, question := app.Challenges().GenerateChallenge()
+	payload := map[string]string{
+		"token":    token,
+		"question": question,
+	}
+	respondJSON(w, http.StatusOK, payload)
+}
+
 // Page represents a single link in the pagination control.
 type Page struct {
 	Number     int

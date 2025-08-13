@@ -37,7 +37,7 @@
                 <tr>
                     <td>Challenge <span class="required">*</span></td>
                     <td>
-                        {{.ChallengeQuestion}}<br>
+                        <span id="challenge-question">{{.ChallengeQuestion}}</span><br>
                         <input type="text" name="challenge_answer" size="6" required>
                         <input type="hidden" name="challenge_token" value="{{.ChallengeToken}}">
                     </td>

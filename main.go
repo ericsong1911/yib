@@ -128,6 +128,7 @@ func setupRouter(app *Application) *chi.Mux {
 	mux.Post("/delete", handlers.MakeHandler(app, handlers.HandleCookieDelete))
 	mux.Post("/report", handlers.MakeHandler(app, handlers.HandleReport))
 	mux.Get("/api/post/{postID}", handlers.MakeHandler(app, handlers.HandlePostPreview))
+	mux.Get("/api/challenge", handlers.MakeHandler(app, handlers.HandleNewChallenge))
 
 	// Moderation handlers
 	mux.Route("/mod", func(r chi.Router) {
