@@ -22,28 +22,16 @@ export async function submitPostForm(form) {
             errorContainer.innerHTML = result.error;
             Modal.alert('Post Error', errorContainer.innerHTML);
             localizeTimestamps(); // Run on new modal content
-            return null; // Return null on failure
+            return { error: result.error }; // Return the error message on failure
         }
         return result; // Return the JSON result on success
 
     } catch (error) {
         Modal.alert('Post Error', 'An unexpected network error occurred. Please try again.');
-        return null; // Return null on failure
+        return { error: "Network Error" }; // Return a generic error on failure
     } finally {
-        // The caller will be responsible for re-enabling the button
         submitButton.disabled = false;
         submitButton.value = originalButtonText;
-    }
-}
-
-export async function fetchNewChallenge() {
-    try {
-        const response = await fetch('/api/challenge');
-        if (!response.ok) return null;
-        return await response.json();
-    } catch (error) {
-        console.error("Failed to fetch new challenge:", error);
-        return null;
     }
 }
 

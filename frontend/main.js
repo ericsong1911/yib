@@ -2,7 +2,7 @@
 
 import Modal from './modal.js';
 import { state } from './state.js';
-import { submitPostForm, handleApiSubmit, fetchNewChallenge } from './api.js';
+import { submitPostForm, handleApiSubmit } from './api.js';
 import {
     applyStatefulDOMChanges,
     toggleImageSize,
@@ -219,21 +219,6 @@ function init() {
                 window.location.assign(result.redirect);
             }
             return;
-        }
-
-        if (result && result.error && result.error.includes("Invalid challenge answer")) {
-            const newChallenge = await fetchNewChallenge();
-            if (newChallenge) {
-                const tokenInput = postForm.querySelector('input[name="challenge_token"]');
-                const answerInput = postForm.querySelector('input[name="challenge_answer"]');
-                const questionEl = document.getElementById('challenge-question');
-
-                if (tokenInput && answerInput && questionEl) {
-                    tokenInput.value = newChallenge.token;
-                    questionEl.textContent = newChallenge.question;
-                    answerInput.value = '';
-                }
-            }
         }
         
         state.isUserActionInProgress = false;
