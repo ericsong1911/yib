@@ -84,6 +84,7 @@ func render(w http.ResponseWriter, r *http.Request, app App, layout, contentTmpl
 		data = make(map[string]interface{})
 	}
 
+	data["GlobalBoards"] = getBoardList(app)
 	data["AppVersion"] = config.AppVersion
 	data["DefaultTheme"] = config.DefaultTheme
 

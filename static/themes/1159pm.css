@@ -188,3 +188,5 @@ body.theme-1159pm { background: var(--bg); color: var(--text); }
 .theme-1159pm .moderator-controls {
 	color: var(--text);
 }
+
+.theme-1159pm .catalog-subject { color: var(--title); }

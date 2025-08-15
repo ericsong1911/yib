@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"yib/database"
 	"yib/models"
 	"yib/utils"
@@ -27,6 +28,60 @@ type App interface {
 	Challenges() *models.ChallengeStore
 	UploadDir() string
 	BannerFile() string
+}
+
+// --- Board List Cache ---
+var (
+    boardListCache []models.NavBoardEntry
+    cacheLock      sync.RWMutex
+)
+
+// getBoardList is a cached function to retrieve all boards for the nav dropdown.
+func getBoardList(app App) []models.NavBoardEntry {
+	cacheLock.RLock()
+
+	if boardListCache != nil {
+		cacheLock.RUnlock()
+		return boardListCache
+	}
+	cacheLock.RUnlock() 
+
+	cacheLock.Lock()
+	defer cacheLock.Unlock() 
+
+	if boardListCache != nil {
+		return boardListCache
+	}
+
+	rows, err := app.DB().DB.Query("SELECT id, name FROM boards WHERE archived = 0 ORDER BY id")
+	if err != nil {
+		log.Printf("ERROR: Failed to query board list for global dropdown: %v", err)
+		return nil 
+	}
+	defer rows.Close()
+
+	var boards []models.NavBoardEntry
+	for rows.Next() {
+		var b models.NavBoardEntry 
+
+		if err := rows.Scan(&b.ID, &b.Name); err == nil {
+			boards = append(boards, b)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("ERROR: Row error scanning board list for global dropdown: %v", err)
+	}
+
+	boardListCache = boards
+
+	return boards
+}
+
+// ClearBoardListCache invalidates the global board list cache.
+func ClearBoardListCache() {
+	cacheLock.Lock()
+	defer cacheLock.Unlock()
+	boardListCache = nil
 }
 
 // respondJSON sends a JSON response with a given status code.

@@ -81,6 +81,11 @@ type BoardEntry struct {
 	IsLocked    bool
 }
 
+type NavBoardEntry struct {
+	ID   string
+	Name string
+}
+
 // --- Moderation & System Models ---
 
 type Ban struct {

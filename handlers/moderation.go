@@ -175,6 +175,7 @@ func HandleEditBoard(w http.ResponseWriter, r *http.Request, app App) {
 		}
 
 		app.DB().ClearBoardCache(boardID)
+		ClearBoardListCache()
 		http.Redirect(w, r, "/mod/", http.StatusSeeOther)
 		return
 	}
@@ -201,6 +202,7 @@ func HandleDeleteBoard(w http.ResponseWriter, r *http.Request, app App) {
 		return
 	}
 	app.DB().ClearBoardCache(boardID)
+	ClearBoardListCache()
 	log.Printf("INFO: Board /%s/ was deleted by a moderator.", boardID)
 	http.Redirect(w, r, "/mod/", http.StatusSeeOther)
 }
@@ -695,6 +697,7 @@ func HandleCreateBoard(w http.ResponseWriter, r *http.Request, app App) {
 	}
 
 	app.DB().ClearBoardCache(id)
+	ClearBoardListCache()
 	log.Printf("INFO: Board /%s/ - '%s' was created by a moderator.", id, name)
 	http.Redirect(w, r, "/mod/", http.StatusSeeOther)
 }

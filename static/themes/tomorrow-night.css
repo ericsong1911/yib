@@ -138,3 +138,5 @@ body.theme-tomorrow-night { background-color: #1d1f21; color: #c5c8c6; }
     color: #c1264d;
     border-color: #c1264d;
 }
+
+.theme-tomorrow-night .catalog-subject { color: #b294bb; }

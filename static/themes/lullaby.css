@@ -180,3 +180,5 @@ body.theme-lullaby { background: var(--bg); color: var(--text); }
 .theme-lullaby .moderator-controls {
     color: var(--text);
 }
+
+.theme-lullaby .catalog-subject { color: var(--title); }

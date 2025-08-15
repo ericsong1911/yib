@@ -125,3 +125,5 @@ body.theme-photon { background-color: #f9f9f9; color: #333; }
 .theme-photon .moderator-controls {
     color: #ff6600;
 }
+
+.theme-photon .catalog-subject { color: #0066cc; }

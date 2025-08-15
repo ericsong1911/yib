@@ -14,6 +14,16 @@
     <link rel="stylesheet" href="/static/themes/{{.ColorScheme}}.css" id="theme-link">
 </head>
 <body class="theme-{{.ColorScheme}}" data-board-id="{{.BoardID}}" data-default-theme="{{.ColorScheme}}">
+
+    <div class="board-selector">
+        <select id="board-switcher">
+            <option value="">Go to board...</option>
+            {{range .GlobalBoards}}
+                <option value="/{{.ID}}/">/{{.ID}}/ - {{.Name}}</option>
+            {{end}}
+        </select>
+    </div>
+
     {{if .Banner}}
     <div class="global-banner">
         {{.Banner}}

@@ -729,3 +729,27 @@ html { scroll-behavior: smooth; }
     margin: 0 -8px 10px -8px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
+
+/* Catalog Subject */
+.catalog-subject {
+    font-weight: 600;
+    margin: 5px 0;
+    font-size: 9pt;
+    color: #0f0c5d;
+}
+
+/* Global Board Selector */
+.global-board-selector {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 100;
+}
+
+.global-board-selector select {
+    font-size: 9pt;
+    padding: 5px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background-color: #fff;
+}

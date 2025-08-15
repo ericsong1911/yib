@@ -8,7 +8,8 @@
             <div class="catalog-stats">
                 <b>R:</b> {{.ReplyCount}} / <b>I:</b> {{.ImageCount}}
             </div>
-            <div>{{.Op.Content | stripHTML | truncate 75}}</div>
+            <div class="catalog-subject">{{.Subject | default "No Subject" | truncate 50}}</div>
+            <div>{{.Op.Content | stripHTML | truncate 75 | safeHTML}}</div>
         </div>
         {{end}}
     </div>

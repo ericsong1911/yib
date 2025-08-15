@@ -191,6 +191,18 @@ function initNameHistory() {
     }
 }
 
+function initBoardSelector() {
+    const selector = document.getElementById('board-switcher');
+    if (!selector) return;
+
+    selector.addEventListener('change', () => {
+        const boardUrl = selector.value;
+        if (boardUrl) {
+            window.location.href = boardUrl;
+        }
+    });
+}
+
 function init() {
     document.addEventListener('click', handleGlobalClick);
     document.addEventListener('mouseover', handleGlobalMouseOver);
@@ -231,6 +243,7 @@ function init() {
     initAutoRefresh();
     initThemeSwitcher();
     initNameHistory();
+    initBoardSelector();
     applyStatefulDOMChanges();
 }
 

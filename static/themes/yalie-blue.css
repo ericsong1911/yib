@@ -128,3 +128,5 @@ body.theme-yalie-blue { background-color: #f0f4ff; color: #1a1a1a; }
 .theme-yalie-blue .moderator-controls {
     color: #2a4b8d;
 }
+
+.theme-yalie-blue .catalog-subject { color: #0f0c5d; }
