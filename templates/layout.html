@@ -15,6 +15,12 @@
 </head>
 <body class="theme-{{.ColorScheme}}" data-board-id="{{.BoardID}}" data-default-theme="{{.ColorScheme}}">
 
+    {{if .Banner}}
+    <div class="global-banner">
+        {{.Banner}}
+    </div>
+    {{end}}
+
     <div class="board-selector">
         <select id="board-switcher">
             <option value="">Go to board...</option>
@@ -23,12 +29,6 @@
             {{end}}
         </select>
     </div>
-
-    {{if .Banner}}
-    <div class="global-banner">
-        {{.Banner}}
-    </div>
-    {{end}}
 
     <div class="boardHeader">
         <h1 class="boardTitle">{{.BoardTitle}}</h1>
