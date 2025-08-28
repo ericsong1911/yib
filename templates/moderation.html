@@ -1,10 +1,15 @@
 <h2>Dashboard</h2>
 <p>Access granted from LAN: {{.RemoteAddr}}</p>
 
+<form action="/mod/backup-db" method="post" class="js-confirm-form" data-confirm-message="Create a new database backup?" class="mod-dashboard-form">
+    <input type="hidden" name="csrf_token" value="{{.csrfToken}}">
+    <input type="submit" value="Backup Database Now">
+</form>
+
 <hr>
 
 <h3>Manual Ban</h3>
-<form action="/mod/ban" method="post" onsubmit="handleManualBan(event)">
+<form action="/mod/ban" method="post" id="manual-ban-form">
     <input type="hidden" name="csrf_token" value="{{.csrfToken}}" id="manual-ban-csrf">
     <table>
         <tbody>
@@ -16,37 +21,6 @@
     </table>
     <input type="submit" value="Apply Manual Ban">
 </form>
-<script>
-    function handleManualBan(event) {
-        event.preventDefault();
-        const ipHash = document.getElementById('manual-ban-ip-hash').value;
-        const cookieHash = document.getElementById('manual-ban-cookie-hash').value;
-        const reason = document.getElementById('manual-ban-reason').value;
-        const duration = document.getElementById('manual-ban-duration').value;
-        const csrfToken = document.getElementById('manual-ban-csrf').value;
-
-        if (!ipHash && !cookieHash) {
-            alert('You must provide at least one hash to ban.');
-            return;
-        }
-
-        const data = { ip_hash: ipHash, cookie_hash: cookieHash, reason, duration, csrf_token: csrfToken };
-        const formData = new URLSearchParams(data);
-
-        fetch('/mod/ban', { method: 'POST', body: formData })
-            .then(res => res.json())
-            .then(result => {
-                if (result.error) {
-                    alert('Error: ' + result.error);
-                } else {
-                    alert('Success: ' + result.success);
-                    event.target.reset();
-                }
-            })
-            .catch(err => alert('Network error: ' + err.message));
-    }
-</script>
-
 
 <hr>
 
@@ -89,28 +63,28 @@
 
 <h2>Board & Category Management</h2>
 <p>Change board order, category, or category order. To delete a category, clear its name and save (boards will be moved to General).</p>
-<form action="/mod/manage-categories" method="post" style="margin-top: 15px;">
+<form action="/mod/manage-categories" method="post" class="mod-dashboard-form">
     <input type="hidden" name="csrf_token" value="{{.csrfToken}}">
     
-    <h3 style="margin-bottom: 10px;">Categories</h3>
+    <h3 class="mod-sub-header">Categories</h3>
     {{range .Categories}}
-    <div style="margin-bottom: 5px;">
-        Order: <input type="number" name="order-{{.ID}}" value="{{.SortOrder}}" style="width: 50px;">
+    <div class="mod-form-row">
+        Order: <input type="number" name="order-{{.ID}}" value="{{.SortOrder}}" class="mod-order-input">
         Name: <input type="text" name="name-{{.ID}}" value="{{.Name}}" {{if eq .ID 1}}readonly{{end}}> {{if eq .ID 1}}(Cannot delete General){{end}}
     </div>
     {{end}}
-    <div style="margin-top: 10px;">
-        Order: <input type="number" name="order-0" value="99" style="width: 50px;">
+    <div class="mod-form-row mod-form-spacer">
+        Order: <input type="number" name="order-0" value="99" class="mod-order-input">
         New Category: <input type="text" name="name-0" placeholder="Enter name to create">
     </div>
 
-    <h3 style="margin-top: 20px;">Boards</h3>
+    <h3 class="mod-sub-header mod-form-spacer">Boards</h3>
     <div class="board-management-list">
         {{range .Boards}}
         <div class="board-item">
             <span>/{{.ID}}/ - {{.Name}}</span>
             <div>
-                Order: <input type="number" name="board_order-{{.ID}}" value="{{.SortOrder}}" style="width: 50px;">
+                Order: <input type="number" name="board_order-{{.ID}}" value="{{.SortOrder}}" class="mod-order-input">
                 Category: 
                 <select name="board_cat-{{.ID}}">
                     {{$currentBoardCategoryID := .CategoryID}}
@@ -118,18 +92,17 @@
                         <option value="{{.ID}}" {{if eq .ID $currentBoardCategoryID}}selected{{end}}>{{.Name}}</option>
                     {{end}}
                 </select>
-                <a href="/mod/edit-board?id={{.ID}}" style="margin-left: 10px;">Edit Details</a>
-                <button type="submit" name="board_id" value="{{.ID}}"
-                        formaction="/mod/delete-board" formmethod="post"
-                        onclick="return confirm('WARNING: Are you sure you want to permanently delete the board /{{.ID}}/? This will delete all threads, posts, and images and cannot be undone.');"
-                        class="moderator-controls-delete-button" style="display: inline; margin-left: 10px;">
+                <a href="/mod/edit-board?id={{.ID}}" class="mod-inline-link">Edit Details</a>
+                <button type="button" class="js-board-delete moderator-controls-delete-button mod-inline-button"
+                        data-board-id="{{.ID}}"
+                        data-csrf-token="{{$.csrfToken}}">
                     Delete
                 </button>
             </div>
         </div>
         {{end}}
     </div>
-    <input type="submit" value="Save All Changes" style="margin-top: 20px;">
+    <input type="submit" value="Save All Changes" class="mod-form-spacer">
 </form>
 
 <hr>
@@ -168,8 +141,10 @@
     </td>
     <td>{{.Content | stripHTML | truncate 100}}</td>
     <td><time class="post-time" datetime="{{.Timestamp | formatISO}}">{{.Timestamp | formatTime}}</time></td>
-    <td>
-        <form action="/mod/delete-post" method="post" onsubmit="return confirm('Delete this post?')"><input type="hidden" name="csrf_token" value="{{$.csrfToken}}"><input type="hidden" name="post_id" value="{{.ID}}"><input type="submit" value="Delete"></form>
+    <td>         
+        <button type="button" class="js-mod-delete"
+                data-post-id="{{.ID}}"
+                data-csrf-token="{{$.csrfToken}}">Delete</button>
         <button type="button" class="ban-link" 
             data-ip-hash="{{.IPHash}}" 
             data-cookie-hash="{{.CookieHash}}" 

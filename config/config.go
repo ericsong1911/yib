@@ -1,7 +1,8 @@
+// yib/config/config.go
 package config
 
 const (
-	AppVersion   = "0.44-beta"
+	AppVersion   = "0.5-beta"
 	DefaultTheme = "yalie-blue"
 
 	// Form & Post Limits
@@ -10,7 +11,15 @@ const (
 	MaxCommentLen = 8000
 
 	// File Upload Limits
-	MaxFileSize = 15 * 1024 * 1024 // 15MB
-	MaxWidth    = 8000
-	MaxHeight   = 8000
+	MaxFileSize     = 15 * 1024 * 1024 // 15MB
+	MaxWidth        = 8000
+	MaxHeight       = 8000
+	ThumbnailWidth  = 250
+	ThumbnailHeight = 250
+
+	// Rate Limiting Defaults
+	DefaultRateLimitEvery  = "30s"
+	DefaultRateLimitBurst  = 3
+	DefaultRateLimitPrune  = "1h"
+	DefaultRateLimitExpire = "24h"
 )

@@ -322,7 +322,7 @@ button:active {
     max-height: 250px; 
     cursor: pointer;
     border-radius: 6px;
-    transition: all 0.3s ease;
+    transition: max-width 0.3s ease, max-height 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 .postImg:hover {
@@ -414,12 +414,15 @@ blockquote.postMessage {
     z-index: 1000;
     backdrop-filter: blur(4px);
 }
-.modal-content { 
-    padding: 25px; 
+.modal-content {
+    padding: 25px;
     text-align: center;
     border-radius: 12px;
     box-shadow: 0 10px 40px rgba(0,0,0,0.2);
     animation: modalSlide 0.2s ease;
+    max-width: 90vw;
+    width: 450px;
+    background-color: #fff;
 }
 .modal-content h3 { 
     margin-bottom: 20px;
@@ -595,6 +598,7 @@ html { scroll-behavior: smooth; }
 }
 
 .file-clear-button {
+    display: none;
     position: absolute;
     top: 50%;
     right: 5px;
@@ -752,4 +756,54 @@ html { scroll-behavior: smooth; }
     border: 1px solid #ccc;
     border-radius: 4px;
     background-color: #fff;
+}
+
+/* Moderator Indicator */
+.mod-indicator {
+    color: #7f1f1f;
+    font-weight: bold;
+    font-size: 8pt;
+    margin-left: 5px;
+    vertical-align: middle;
+}
+
+/* Replace inline styles for mod */
+
+.mod-dashboard-form {
+    margin: 15px 0;
+}
+
+.mod-sub-header {
+    margin-bottom: 10px;
+}
+
+.mod-form-row {
+    margin-bottom: 5px;
+}
+
+.mod-order-input {
+    width: 50px;
+}
+
+.mod-form-spacer {
+    margin-top: 20px;
+}
+
+.mod-inline-link {
+    margin-left: 10px;
+}
+
+.mod-inline-button {
+    display: inline;
+    margin-left: 10px;
+}
+
+.post-actions form {
+    display: inline;
+    margin: 0;
+    padding: 0;
+}
+
+.post-action-form {
+    display: inline;
 }

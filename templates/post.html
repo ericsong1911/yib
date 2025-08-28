@@ -3,7 +3,7 @@
     {{if .Post.ImagePath}}
     <div class="file">
         <div class="fileText">File: <a href="{{.Post.ImagePath}}" target="_blank">{{.Post.ImagePath | basename}}</a></div>
-        <a href="{{.Post.ImagePath}}" target="_blank"><img src="{{.Post.ImagePath}}" class="postImg"></a>
+        <a href="{{.Post.ImagePath}}" target="_blank"><img src="{{if .Post.ThumbnailPath.Valid}}{{.Post.ThumbnailPath.String}}{{else}}{{.Post.ImagePath}}{{end}}" class="postImg"></a>
     </div>
     {{end}}
     <div class="postInfo">
@@ -11,6 +11,7 @@
         <span class="nameBlock">
             <span class="name">{{.Post.Name | default "Anonymous"}}</span>
             {{if .Post.Tripcode}}<span class="postertrip">{{.Post.Tripcode}}</span>{{end}}
+            {{if .Post.IsModerator}}<span class="mod-indicator">◆ Admin</span>{{end}}
         </span>
         <time class="post-time dateTime" datetime="{{.Post.Timestamp | formatISO}}">{{.Post.Timestamp | formatTime}}</time>
         <span class="postNum">
@@ -31,7 +32,7 @@
             [<a href="#" class="report-link post-action-link" data-post-id="{{.Post.ID}}">Report</a>]
 
             {{if and .CurrentUserCookieHash (eq .CurrentUserCookieHash .Post.CookieHash)}}
-            [<form action="/delete" method="post" onsubmit="return confirm('Are you sure you want to delete your post No. {{.Post.ID}}?');" style="display: inline;">
+            [<form action="/delete" method="post" class="js-confirm-form post-action-form" data-confirm-message="Are you sure you want to delete your post No. {{.Post.ID}}?">
                 <input type="hidden" name="csrf_token" value="{{.csrfToken}}">
                 <input type="hidden" name="post_id" value="{{.Post.ID}}">
                 <input type="submit" value="Delete" class="user-delete-button post-action-link">
@@ -46,11 +47,9 @@
                 <input type="hidden" name="cookie_hash" value="{{.Post.CookieHash}}">
                 <input type="submit" value="Lookup">
             </form>
-            <form action="/mod/delete-post" method="post" onsubmit="return confirm('Are you sure you want to delete post No. {{.Post.ID}}?');">
-                <input type="hidden" name="csrf_token" value="{{.csrfToken}}">
-                <input type="hidden" name="post_id" value="{{.Post.ID}}">
-                <input type="submit" value="Delete">
-            </form>
+            <button type="button" class="js-mod-delete" 
+                    data-post-id="{{.Post.ID}}" 
+                    data-csrf-token="{{.csrfToken}}">Delete</button>
             <button type="button" class="ban-link"
                 data-ip-hash="{{.Post.IPHash}}"
                 data-cookie-hash="{{.Post.CookieHash}}"

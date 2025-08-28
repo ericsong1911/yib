@@ -1,7 +1,12 @@
 #!/bin/bash
 
+# A simple build script for yib.
 # Prerequisite: go install golang.org/x/tools/cmd/goimports@latest
 # Prerequisite: npm install -g esbuild
+
+# --- Script Configuration ---
+# Exit immediately if a command exits with a non-zero status.
+set -e
 
 echo "==> Tidying Go modules..."
 go mod tidy
@@ -18,28 +23,23 @@ mkdir -p "$JS_DIST_DIR"
 # Use esbuild to bundle our ES Modules into a single minified file.
 esbuild "$JS_SOURCE_DIR/main.js" --bundle --minify --outfile="$JS_OUTPUT_FILE"
 
-if [ $? -ne 0 ]; then
-    echo "!!> JavaScript bundling failed. Aborting."
-    exit 1
-fi
-
 echo "    -> Bundled to $JS_OUTPUT_FILE"
 
+# --- Go Test Suite ---
+echo "==> Running Go test suite with FTS5 support..."
+go test -tags fts5 -v ./...
 
 # --- Go Compilation ---
 echo "==> Compiling Go binary with FTS5 support..."
-go build -tags "sqlite_fts5" -o yib .
-
-
-if [ $? -ne 0 ]; then
-    echo "!!> Go compilation failed. Aborting."
-    exit 1
-fi
+# The 'sqlite_fts5' tag is required for the final binary build.
+go build -tags "sqlite_fts5" -ldflags "-s -w" -o yib .
 
 echo ""
+echo "=============================="
 echo "Build complete! Run with:"
 echo "./yib"
 echo ""
 echo "Or with custom config:"
 echo "YIB_PORT=8888 YIB_DB_PATH=./prod.db ./yib"
+echo "=============================="
 echo ""

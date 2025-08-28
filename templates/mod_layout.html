@@ -4,13 +4,11 @@
 <head>
     <meta charset="UTF-8">
     <title>{{.Title}} - Mod Panel</title>
-    <!-- Load the base stylesheet -->
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
     <link rel="stylesheet" href="/static/style.css">
-    <!-- Load the theme-specific stylesheet -->
-    <link rel="stylesheet" href="/static/themes/{{default "yalie-blue" .ColorScheme}}.css">
+    <link rel="stylesheet" href="/static/themes/{{default "yalie-blue" .ColorScheme}}.css" id="theme-link">
 </head>
-<!-- Add the theme class to the body -->
-<body class="mod-panel theme-{{default "yalie-blue" .ColorScheme}}">
+<body id="mod-page" class="mod-panel theme-{{default "yalie-blue" .ColorScheme}}" data-default-theme="{{.DefaultTheme}}">
     <h1>yib Moderation</h1>
     <div class="navLinks">
         [<a href="/">Home</a>]
@@ -23,6 +21,22 @@
     <main>
         {{.Content}}
     </main>
+    
+    <hr>
+    <div class="footer">
+        <div class="theme-selector">
+            Theme:
+            <select id="theme-switcher">
+                <option value="default">Default</option>
+                <option value="yalie-blue">Yalie Blue</option>
+                <option value="lullaby">Lullaby</option>
+                <option value="1159pm">11:59 PM</option>
+                <option value="tomorrow-night">Tomorrow Night</option>
+                <option value="photon">Photon</option>
+                <option value="futaba">Futaba</option>
+            </select>
+        </div>
+    </div>
 
     <script src="/static/dist/board.min.js"></script>
 </body>

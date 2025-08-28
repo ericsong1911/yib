@@ -57,10 +57,35 @@ export function quote(postNum) {
 }
 
 export function toggleImageSize(img) {
+    if (!img || img.tagName !== 'IMG') {
+        return;
+    }
+    const parentLink = img.closest('a');
+    if (!parentLink) {
+        return;
+    }
+
     const isExpanded = img.dataset.expanded === 'true';
-    img.style.maxWidth = isExpanded ? config.imageMaxWidth : config.imageExpandedMaxWidth;
-    img.style.maxHeight = isExpanded ? config.imageMaxHeight : config.imageExpandedMaxHeight;
-    img.dataset.expanded = String(!isExpanded);
+
+    if (isExpanded) {
+        // --- COLLAPSE LOGIC ---
+        img.style.maxWidth = '';
+        img.style.maxHeight = '';
+        img.dataset.expanded = 'false';
+
+        setTimeout(() => {
+            if (img.dataset.expanded === 'false' && img.dataset.thumbSrc) {
+                img.src = img.dataset.thumbSrc;
+            }
+        }, 300);
+    } else {
+        // --- EXPAND LOGIC ---
+        img.dataset.thumbSrc = img.src;
+        img.src = parentLink.href;
+        img.style.maxWidth = config.imageExpandedMaxWidth;
+        img.style.maxHeight = config.imageExpandedMaxHeight;
+        img.dataset.expanded = 'true';
+    }
 }
 
 export function loadHiddenThreads() {

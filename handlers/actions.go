@@ -1,5 +1,4 @@
 // yib/handlers/actions.go
-
 package handlers
 
 import (
@@ -10,10 +9,11 @@ import (
 	"fmt"
 	"html/template"
 	"image"
+	_ "image/gif" // Import gif decoder
 	_ "image/jpeg"
 	_ "image/png"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -31,8 +31,8 @@ import (
 
 // HandlePost is the main handler for creating new threads and replies.
 func HandlePost(w http.ResponseWriter, r *http.Request, app App) {
-	// We will capture the user's input here in case of an error, but we will
-	// respond with JSON, not a full page render.
+	logger := app.Logger().With("handler", "HandlePost")
+
 	userInput := &models.FormInput{
 		Name:    r.FormValue("name"),
 		Subject: r.FormValue("subject"),
@@ -40,11 +40,11 @@ func HandlePost(w http.ResponseWriter, r *http.Request, app App) {
 	}
 
 	if err := r.ParseMultipartForm(config.MaxFileSize + 1024); err != nil {
-		// This check is now redundant because of the above, but harmless.
 		if userInput.Content == "" {
 			userInput.Content = r.FormValue("content")
 		}
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Form parsing error: " + err.Error()})
+		logger.Warn("Form parsing error", "error", err)
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Form parsing error: " + err.Error()}, app)
 		return
 	}
 	boardID := r.FormValue("board_id")
@@ -63,29 +63,30 @@ func HandlePost(w http.ResponseWriter, r *http.Request, app App) {
 			expiryText = fmt.Sprintf(`This ban will expire on <time class="post-time" datetime="%s">%s UTC</time>.`, isoTime, utcTime)
 		}
 		errMsg := fmt.Sprintf("You are banned. Reason: %s. %s", template.HTMLEscapeString(ban.Reason), expiryText)
-		respondJSON(w, http.StatusForbidden, map[string]string{"error": errMsg})
+		logger.Warn("Banned user tried to post", "ip_hash", ipHash, "cookie_hash", cookieHash)
+		respondJSON(w, http.StatusForbidden, map[string]string{"error": errMsg}, app)
 		return
 	}
 	if !app.RateLimiter().GetLimiter(ip).Allow() {
-		respondJSON(w, http.StatusTooManyRequests, map[string]string{"error": "Rate limit exceeded. Please wait a moment."})
+		logger.Warn("Rate limit exceeded", "ip", ip)
+		respondJSON(w, http.StatusTooManyRequests, map[string]string{"error": "Rate limit exceeded. Please wait a moment."}, app)
 		return
 	}
 	if !app.Challenges().Verify(r.FormValue("challenge_token"), r.FormValue("challenge_answer")) {
-        // Verification failed. Generate a NEW challenge for the user.
-        newToken, newQuestion := app.Challenges().GenerateChallenge()
-		
-        // Respond with the error AND the new challenge data.
-        respondJSON(w, http.StatusForbidden, map[string]string{
-            "error": "Invalid challenge answer. Please try again.",
-            "newToken": newToken,
-            "newQuestion": newQuestion,
-        })
+		newToken, newQuestion := app.Challenges().GenerateChallenge()
+		logger.Warn("Invalid challenge answer", "ip", ip)
+		respondJSON(w, http.StatusForbidden, map[string]string{
+			"error":       "Invalid challenge answer. Please try again.",
+			"newToken":    newToken,
+			"newQuestion": newQuestion,
+		}, app)
 		return
 	}
 
 	boardConfig, err := app.DB().GetBoard(boardID)
 	if err != nil {
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Board not found."})
+		logger.Warn("User tried to post to non-existent board", "board_id", boardID)
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Board not found."}, app)
 		return
 	}
 
@@ -93,25 +94,29 @@ func HandlePost(w http.ResponseWriter, r *http.Request, app App) {
 	subject := r.FormValue("subject")
 	content := r.FormValue("content")
 	if len(name) > config.MaxNameLen || len(subject) > config.MaxSubjectLen || len(content) > config.MaxCommentLen {
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "A form field exceeds the maximum length."})
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "A form field exceeds the maximum length."}, app)
 		return
 	}
 
-	imagePath, imageHash, hasImage, err := processImage(r, app)
+	// processImage now returns thumbnail path as well
+	imagePath, thumbPath, imageHash, hasImage, err := processImage(r, app, logger)
 	if err != nil {
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Image processing failed: " + err.Error()})
+		logger.Warn("Image processing failed", "error", err)
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Image processing failed: " + err.Error()}, app)
 		return
 	}
 	if strings.TrimSpace(content) == "" && !hasImage {
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Post must have content or an image."})
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Post must have content or an image."}, app)
 		return
 	}
 
 	displayName, tripcode := utils.GenerateTripcode(name)
+	isModerator := utils.IsModerator(r) // Check if poster is a mod
+
 	tx, err := app.DB().DB.Begin()
 	if err != nil {
-		log.Printf("ERROR: Could not begin transaction: %v", err)
-		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Database error."})
+		logger.Error("Could not begin transaction", "error", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Database error."}, app)
 		return
 	}
 	defer tx.Rollback()
@@ -120,20 +125,24 @@ func HandlePost(w http.ResponseWriter, r *http.Request, app App) {
 	var redirectURL string
 	if threadIDStr == "" || threadIDStr == "0" { // New thread
 		if boardConfig.ImageRequired && !hasImage {
-			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Image required for new threads on this board."})
+			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Image required for new threads on this board."}, app)
 			return
 		}
 		res, err := tx.Exec("INSERT INTO threads (board_id, subject, bump, reply_count, image_count) VALUES (?, ?, ?, 0, ?)", boardID, subject, utils.GetSQLTime(), utils.BtoI(hasImage))
 		if err != nil {
-			log.Printf("ERROR: API: Failed to insert new thread: %v", err)
-			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Database error creating thread."})
+			logger.Error("Failed to insert new thread", "error", err)
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Database error creating thread."}, app)
 			return
 		}
 		threadID, _ := res.LastInsertId()
-		res, err = tx.Exec("INSERT INTO posts (board_id, thread_id, name, tripcode, content, image_path, image_hash, timestamp, ip_hash, cookie_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", boardID, threadID, displayName, tripcode, processContent(content), imagePath, imageHash, utils.GetSQLTime(), ipHash, cookieHash)
+		// Insert new columns
+		res, err = tx.Exec(`
+			INSERT INTO posts (board_id, thread_id, name, tripcode, content, image_path, thumbnail_path, image_hash, timestamp, ip_hash, cookie_hash, is_moderator)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			boardID, threadID, displayName, tripcode, processContent(content), imagePath, thumbPath, imageHash, utils.GetSQLTime(), ipHash, cookieHash, isModerator)
 		if err != nil {
-			log.Printf("ERROR: API: Failed to insert new OP: %v", err)
-			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Database error creating post."})
+			logger.Error("Failed to insert new OP", "error", err)
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Database error creating post."}, app)
 			return
 		}
 		newPostID, _ = res.LastInsertId()
@@ -144,17 +153,21 @@ func HandlePost(w http.ResponseWriter, r *http.Request, app App) {
 		var locked bool
 		var replyCount int
 		if err := tx.QueryRow("SELECT locked, reply_count FROM threads WHERE id = ?", threadID).Scan(&locked, &replyCount); err != nil {
-			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Thread not found."})
+			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Thread not found."}, app)
 			return
 		}
 		if locked {
-			respondJSON(w, http.StatusForbidden, map[string]string{"error": "Thread is locked."})
+			respondJSON(w, http.StatusForbidden, map[string]string{"error": "Thread is locked."}, app)
 			return
 		}
-		res, err := tx.Exec("INSERT INTO posts (board_id, thread_id, name, tripcode, content, image_path, image_hash, timestamp, ip_hash, cookie_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", boardID, threadID, displayName, tripcode, processContent(content), imagePath, imageHash, utils.GetSQLTime(), ipHash, cookieHash)
+		// Insert new columns
+		res, err := tx.Exec(`
+			INSERT INTO posts (board_id, thread_id, name, tripcode, content, image_path, thumbnail_path, image_hash, timestamp, ip_hash, cookie_hash, is_moderator)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			boardID, threadID, displayName, tripcode, processContent(content), imagePath, thumbPath, imageHash, utils.GetSQLTime(), ipHash, cookieHash, isModerator)
 		if err != nil {
-			log.Printf("ERROR: API: Failed to insert reply: %v", err)
-			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Database error creating reply."})
+			logger.Error("Failed to insert reply", "error", err)
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Database error creating reply."}, app)
 			return
 		}
 
@@ -167,8 +180,8 @@ func HandlePost(w http.ResponseWriter, r *http.Request, app App) {
 			_, updateErr = tx.Exec("UPDATE threads SET reply_count = reply_count + 1, image_count = image_count + ? WHERE id = ?", utils.BtoI(hasImage), threadID)
 		}
 		if updateErr != nil {
-			log.Printf("ERROR: API: Failed to update thread metadata: %v", updateErr)
-			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Database error updating thread."})
+			logger.Error("Failed to update thread metadata", "error", updateErr)
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Database error updating thread."}, app)
 			return
 		}
 		redirectURL = fmt.Sprintf("/%s/thread/%d#p%d", boardID, threadID, newPostID)
@@ -182,7 +195,7 @@ func HandlePost(w http.ResponseWriter, r *http.Request, app App) {
 			if !seen[match[1]] {
 				if targetID, err := strconv.ParseInt(match[1], 10, 64); err == nil && targetID > 0 {
 					if _, err := tx.Exec("INSERT OR IGNORE INTO backlinks (source_post_id, target_post_id) VALUES (?, ?)", newPostID, targetID); err != nil {
-						log.Printf("WARNING: Failed to insert backlink from %d to %d: %v", newPostID, targetID, err)
+						logger.Warn("Failed to insert backlink", "from", newPostID, "to", targetID, "error", err)
 					}
 				}
 				seen[match[1]] = true
@@ -190,169 +203,198 @@ func HandlePost(w http.ResponseWriter, r *http.Request, app App) {
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		log.Printf("ERROR: Failed to commit transaction for new post: %v", err)
-		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Database error saving post."})
+		logger.Error("Failed to commit transaction for new post", "error", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Database error saving post."}, app)
 		return
 	}
 
-	respondJSON(w, http.StatusOK, map[string]string{"redirect": redirectURL})
+	logger.Info("New post created", "post_id", newPostID, "board_id", boardID)
+	respondJSON(w, http.StatusOK, map[string]string{"redirect": redirectURL}, app)
 }
 
 // HandleCookieDelete allows a user to delete their own post.
 func HandleCookieDelete(w http.ResponseWriter, r *http.Request, app App) {
+	logger := app.Logger().With("handler", "HandleCookieDelete")
 	postID, err := strconv.ParseInt(r.FormValue("post_id"), 10, 64)
 	if err != nil {
-		http.Error(w, "Invalid post ID.", http.StatusBadRequest)
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid post ID."}, app)
 		return
 	}
 
 	currentUserCookieID := r.Context().Value(UserCookieKey).(string)
 	currentUserCookieHash := utils.HashIP(currentUserCookieID)
 
-	var postCookieHash, boardID string
-	var threadID int64
-	if err := app.DB().DB.QueryRow("SELECT cookie_hash, board_id, thread_id FROM posts WHERE id = ?", postID).Scan(&postCookieHash, &boardID, &threadID); err != nil {
+	var postCookieHash string
+	if err := app.DB().DB.QueryRow("SELECT cookie_hash FROM posts WHERE id = ?", postID).Scan(&postCookieHash); err != nil {
 		if err == sql.ErrNoRows {
-			http.Error(w, "Post not found.", http.StatusNotFound)
+			respondJSON(w, http.StatusNotFound, map[string]string{"error": "Post not found."}, app)
 			return
 		}
-		log.Printf("ERROR: DB error checking post ownership for post %d: %v", postID, err)
-		http.Error(w, "Database error.", http.StatusInternalServerError)
+		logger.Error("DB error checking post ownership", "post_id", postID, "error", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Database error."}, app)
 		return
 	}
 
 	if currentUserCookieHash != postCookieHash {
-		log.Printf("SECURITY: User with cookie hash %s failed to delete post %d owned by %s", currentUserCookieHash, postID, postCookieHash)
-		http.Error(w, "You do not have permission to delete this post.", http.StatusForbidden)
+		logger.Warn("User failed to delete post they do not own", "user_hash", currentUserCookieHash, "post_id", postID, "owner_hash", postCookieHash)
+		respondJSON(w, http.StatusForbidden, map[string]string{"error": "You do not have permission to delete this post."}, app)
 		return
 	}
 
-	_, isOp, err := app.DB().DeletePost(postID, app.UploadDir(), "", "")
+	_, _, err = app.DB().DeletePost(postID, app.UploadDir(), "", "")
 	if err != nil {
-		log.Printf("ERROR: Failed to delete post %d by user request: %v", postID, err)
-		http.Error(w, "Failed to delete post.", http.StatusInternalServerError)
+		logger.Error("Failed to delete post by user request", "post_id", postID, "error", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to delete post."}, app)
 		return
 	}
 
-	if isOp {
-		http.Redirect(w, r, "/"+boardID+"/", http.StatusSeeOther)
-	} else {
-		http.Redirect(w, r, r.Header.Get("Referer"), http.StatusSeeOther)
-	}
+	respondJSON(w, http.StatusOK, map[string]string{"success": "Post deleted successfully."}, app)
 }
 
 // HandleReport allows a user to report a post for moderation.
 func HandleReport(w http.ResponseWriter, r *http.Request, app App) {
+	logger := app.Logger().With("handler", "HandleReport")
 	ipHash := utils.HashIP(utils.GetIPAddress(r))
 	cookieHash := utils.HashIP(r.Context().Value(UserCookieKey).(string))
 
 	if _, isBanned := app.DB().GetBanDetails(ipHash, cookieHash); isBanned {
-		respondJSON(w, http.StatusForbidden, map[string]string{"error": "You are banned and cannot submit reports."})
+		logger.Warn("Banned user tried to submit report", "ip_hash", ipHash)
+		respondJSON(w, http.StatusForbidden, map[string]string{"error": "You are banned and cannot submit reports."}, app)
 		return
 	}
 
 	postID, err := strconv.ParseInt(r.FormValue("post_id"), 10, 64)
 	if err != nil || postID == 0 {
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid post ID provided."})
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid post ID provided."}, app)
 		return
 	}
 	reason := r.FormValue("reason")
 	if reason == "" {
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Reason for reporting cannot be empty."})
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Reason for reporting cannot be empty."}, app)
 		return
 	}
 
 	_, err = app.DB().DB.Exec("INSERT INTO reports (post_id, reason, ip_hash, created_at) VALUES (?, ?, ?, ?)", postID, reason, ipHash, utils.GetSQLTime())
 	if err != nil {
-		log.Printf("ERROR: Failed to insert new report for post %d: %v", postID, err)
-		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to submit report."})
+		logger.Error("Failed to insert new report", "post_id", postID, "error", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to submit report."}, app)
 		return
 	}
-	respondJSON(w, http.StatusOK, map[string]string{"success": "Report submitted successfully."})
+	respondJSON(w, http.StatusOK, map[string]string{"success": "Report submitted successfully."}, app)
 }
 
 // --- Internal Helper Functions ---
 
-func processImage(r *http.Request, app App) (path, hashStr string, hasImage bool, err error) {
-	file, _, err := r.FormFile("image")
+// processImage now returns imagePath, thumbnailPath, hash, hasImage, error
+func processImage(r *http.Request, app App, logger *slog.Logger) (string, sql.NullString, string, bool, error) {
+	file, header, err := r.FormFile("image")
 	if err != nil {
 		if err == http.ErrMissingFile {
-			return "", "", false, nil
+			return "", sql.NullString{}, "", false, nil
 		}
-		return "", "", false, fmt.Errorf("could not get form file: %w", err)
+		return "", sql.NullString{}, "", false, fmt.Errorf("could not get form file: %w", err)
 	}
 	defer file.Close()
 
 	limitedReader := &io.LimitedReader{R: file, N: config.MaxFileSize + 1}
 	data, err := io.ReadAll(limitedReader)
 	if err != nil {
-		return "", "", false, fmt.Errorf("could not read file data: %w", err)
+		return "", sql.NullString{}, "", false, fmt.Errorf("could not read file data: %w", err)
 	}
 	if limitedReader.N == 0 {
-		return "", "", true, fmt.Errorf("file is larger than the %dMB limit", config.MaxFileSize/1024/1024)
+		return "", sql.NullString{}, "", true, fmt.Errorf("file is larger than the %dMB limit", config.MaxFileSize/1024/1024)
 	}
 	if len(data) == 0 {
-		return "", "", true, fmt.Errorf("file is empty")
+		return "", sql.NullString{}, "", true, fmt.Errorf("file is empty")
+	}
+
+	// Magic byte validation
+	contentType := http.DetectContentType(data)
+	allowedTypes := map[string]bool{
+		"image/jpeg": true, "image/png": true, "image/gif": true, "image/webp": true,
+	}
+	if !allowedTypes[contentType] {
+		logger.Warn("User uploaded file with invalid MIME type", "detected_type", contentType, "filename", header.Filename)
+		return "", sql.NullString{}, "", true, fmt.Errorf("unsupported file type: %s. Only JPG, PNG, GIF, and WebP are allowed", contentType)
 	}
 
 	hash := sha256.Sum256(data)
-	hashStr = hex.EncodeToString(hash[:])
-	var existingPath string
-	err = app.DB().DB.QueryRow("SELECT image_path FROM posts WHERE image_hash = ?", hashStr).Scan(&existingPath)
-	if err == nil {
-		return existingPath, hashStr, true, nil
+	hashStr := hex.EncodeToString(hash[:])
+
+	var existingPath, existingThumb sql.NullString
+	err = app.DB().DB.QueryRow("SELECT image_path, thumbnail_path FROM posts WHERE image_hash = ?", hashStr).Scan(&existingPath, &existingThumb)
+	if err == nil && existingPath.Valid {
+		return existingPath.String, existingThumb, hashStr, true, nil
 	}
-	if err != sql.ErrNoRows {
-		log.Printf("ERROR: Failed to check for existing image hash: %v", err)
+	if err != nil && err != sql.ErrNoRows {
+		logger.Error("Failed to check for existing image hash", "error", err)
 	}
 
 	reader := bytes.NewReader(data)
 	cfg, format, err := image.DecodeConfig(reader)
 	if err != nil {
-		return "", "", true, fmt.Errorf("invalid image format, could not decode config: %w", err)
-	}
-	if format != "jpeg" && format != "png" && format != "gif" && format != "webp" {
-		return "", "", true, fmt.Errorf("unsupported image format: %s", format)
+		return "", sql.NullString{}, "", true, fmt.Errorf("invalid image format, could not decode config: %w", err)
 	}
 	if cfg.Width > config.MaxWidth || cfg.Height > config.MaxHeight {
-		return "", "", true, fmt.Errorf("image dimensions (%dx%d) exceed maximum (%dx%d)", cfg.Width, cfg.Height, config.MaxWidth, config.MaxHeight)
+		return "", sql.NullString{}, "", true, fmt.Errorf("image dimensions (%dx%d) exceed maximum (%dx%d)", cfg.Width, cfg.Height, config.MaxWidth, config.MaxHeight)
 	}
-
 	if _, err := reader.Seek(0, 0); err != nil {
-		return "", "", true, fmt.Errorf("could not reset reader position: %w", err)
+		return "", sql.NullString{}, "", true, fmt.Errorf("could not reset reader position: %w", err)
 	}
 
+	// Re-decode the full image for processing
 	img, err := imaging.Decode(reader, imaging.AutoOrientation(true))
 	if err != nil {
-		return "", "", true, fmt.Errorf("failed to decode image with orientation correction: %w", err)
+		return "", sql.NullString{}, "", true, fmt.Errorf("failed to decode image with orientation correction: %w", err)
 	}
 
-	outputFormat := format
-	if format == "webp" || format == "gif" {
-		outputFormat = "jpeg"
+	// --- Save Main Image (Re-encoded) ---
+	// Non-animated GIFs are converted to JPEG for consistency and size.
+	outputFormat := "jpeg"
+	if format == "png" {
+		outputFormat = "png"
 	}
 
-	newFilename := fmt.Sprintf("%d_%s.%s", utils.GetTime().UnixNano(), hashStr[:12], outputFormat)
-	outputPath := filepath.Join(app.UploadDir(), newFilename)
-	out, err := os.Create(outputPath)
+	mainFilename := fmt.Sprintf("%d_%s.%s", utils.GetTime().UnixNano(), hashStr[:12], outputFormat)
+	mainOutputPath := filepath.Join(app.UploadDir(), mainFilename)
+	out, err := os.Create(mainOutputPath)
 	if err != nil {
-		return "", "", true, fmt.Errorf("could not create output file: %w", err)
+		return "", sql.NullString{}, "", true, fmt.Errorf("could not create main image file: %w", err)
 	}
 	defer out.Close()
 
-	switch outputFormat {
-	case "jpeg":
-		err = imaging.Encode(out, img, imaging.JPEG, imaging.JPEGQuality(90))
-	case "png":
+	// Encode and save the main image
+	if outputFormat == "png" {
 		err = imaging.Encode(out, img, imaging.PNG)
+	} else {
+		err = imaging.Encode(out, img, imaging.JPEG, imaging.JPEGQuality(90))
 	}
 	if err != nil {
-		if rerr := os.Remove(outputPath); rerr != nil {
-			log.Printf("ERROR: Failed to remove corrupt file artifact %s: %v", outputPath, rerr)
-		}
-		return "", "", true, fmt.Errorf("failed to encode image to %s: %w", outputFormat, err)
+		os.Remove(mainOutputPath)
+		return "", sql.NullString{}, "", true, fmt.Errorf("failed to encode main image: %w", err)
 	}
-	return "/uploads/" + newFilename, hashStr, true, nil
+	mainPath := "/uploads/" + mainFilename
+
+	// Create a thumbnail, preserving aspect ratio.
+	thumb := imaging.Fit(img, config.ThumbnailWidth, config.ThumbnailHeight, imaging.Lanczos)
+	thumbFilename := fmt.Sprintf("%s_thumb.jpeg", mainFilename[:len(mainFilename)-len(filepath.Ext(mainFilename))])
+	thumbOutputPath := filepath.Join(app.UploadDir(), thumbFilename)
+	thumbOut, err := os.Create(thumbOutputPath)
+	if err != nil {
+		logger.Error("Could not create thumbnail file", "error", err)
+		// Don't fail the entire post if thumbnailing fails, just proceed without it.
+		return mainPath, sql.NullString{}, hashStr, true, nil
+	}
+	defer thumbOut.Close()
+
+	if err := imaging.Encode(thumbOut, thumb, imaging.JPEG, imaging.JPEGQuality(85)); err != nil {
+		logger.Error("Failed to encode thumbnail", "error", err)
+		os.Remove(thumbOutputPath) // cleanup failed file
+		return mainPath, sql.NullString{}, hashStr, true, nil
+	}
+	thumbPath := sql.NullString{String: "/uploads/" + thumbFilename, Valid: true}
+
+	return mainPath, thumbPath, hashStr, true, nil
 }
 
 func processContent(content string) string {
@@ -369,15 +411,16 @@ func processContent(content string) string {
 }
 
 func archiveOldThreads(app App, boardID string) {
+	logger := app.Logger().With("system", "archiver", "board_id", boardID)
 	boardConfig, err := app.DB().GetBoard(boardID)
 	if err != nil {
-		log.Printf("ERROR: Archiver failed to get board config for /%s/: %v", boardID, err)
+		logger.Error("Archiver failed to get board config", "error", err)
 		return
 	}
 	var threadCount int
 	err = app.DB().DB.QueryRow("SELECT COUNT(*) FROM threads WHERE board_id = ? AND archived = 0", boardID).Scan(&threadCount)
 	if err != nil {
-		log.Printf("ERROR: Archiver failed to get thread count for /%s/: %v", boardID, err)
+		logger.Error("Archiver failed to get thread count", "error", err)
 		return
 	}
 	if threadCount <= boardConfig.MaxThreads {
@@ -386,7 +429,7 @@ func archiveOldThreads(app App, boardID string) {
 	toArchive := threadCount - boardConfig.MaxThreads
 	rows, err := app.DB().DB.Query(`SELECT id FROM threads WHERE board_id = ? AND archived = 0 AND sticky = 0 ORDER BY bump ASC LIMIT ?`, boardID, toArchive)
 	if err != nil {
-		log.Printf("ERROR: Archiver failed to find threads to archive on /%s/: %v", boardID, err)
+		logger.Error("Archiver failed to find threads to archive", "error", err)
 		return
 	}
 	defer rows.Close()
@@ -399,15 +442,15 @@ func archiveOldThreads(app App, boardID string) {
 		}
 	}
 	if err := rows.Err(); err != nil {
-		log.Printf("ERROR: Archiver failed scanning rows for /%s/: %v", boardID, err)
+		logger.Error("Archiver failed scanning rows", "error", err)
 	}
 
 	if len(threadIDs) > 0 {
 		query := "UPDATE threads SET archived = 1 WHERE id IN (?" + strings.Repeat(",?", len(threadIDs)-1) + ")"
 		if _, err := app.DB().DB.Exec(query, threadIDs...); err != nil {
-			log.Printf("ERROR: Archiver failed to execute update for /%s/: %v", boardID, err)
+			logger.Error("Archiver failed to execute update", "error", err)
 		} else {
-			log.Printf("Archived %d threads from board /%s/", len(threadIDs), boardID)
+			logger.Info("Archived threads", "count", len(threadIDs))
 		}
 	}
 }

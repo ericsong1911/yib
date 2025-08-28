@@ -37,20 +37,22 @@ type FormInput struct {
 }
 
 type Post struct {
-	ID        int64
-	BoardID   string
-	ThreadID  int64
-	IsOp      bool
-	Name      string
-	Tripcode  string
-	Subject   string
-	Content   string
-	ImagePath string
-	ImageHash string
-	Timestamp time.Time
-	IPHash    string
-	CookieHash string
-	Backlinks []int64
+	ID            int64
+	BoardID       string
+	ThreadID      int64
+	IsOp          bool
+	Name          string
+	Tripcode      string
+	Subject       string
+	Content       string
+	ImagePath     string
+	ThumbnailPath sql.NullString // NEW-FEATURE: Path to the smaller thumbnail image.
+	ImageHash     string
+	Timestamp     time.Time
+	IPHash        string
+	CookieHash    string
+	IsModerator   bool // NEW-FEATURE: True if the post was made by a moderator.
+	Backlinks     []int64
 }
 
 type Thread struct {

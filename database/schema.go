@@ -1,6 +1,13 @@
+// yib/database/schema.go
 package database
 
 const schema = `
+-- This table tracks which versioned migrations have been applied.
+CREATE TABLE IF NOT EXISTS schema_migrations (
+	version INTEGER PRIMARY KEY,
+	applied_at DATETIME NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS categories (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	name TEXT NOT NULL UNIQUE,
@@ -28,6 +35,7 @@ CREATE TABLE IF NOT EXISTS posts (
 	timestamp DATETIME, ip_hash TEXT, 
 	cookie_hash TEXT, -- To store the persistent cookie hash
 	deletion_password TEXT,
+	-- NEW-FEATURES: thumbnail_path and is_moderator columns will be added by migration
 	FOREIGN KEY (board_id) REFERENCES boards(id) ON DELETE CASCADE,
 	FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE
 );

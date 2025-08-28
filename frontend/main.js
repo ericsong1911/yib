@@ -2,7 +2,7 @@
 
 import Modal from './modal.js';
 import { state } from './state.js';
-import { submitPostForm, handleApiSubmit } from './api.js';
+import { submitPostForm } from './api.js';
 import {
     applyStatefulDOMChanges,
     toggleImageSize,
@@ -12,6 +12,7 @@ import {
 } from './dom.js';
 import { showPreview, hidePreview } from './preview.js';
 
+// --- HELPER FUNCTIONS ---
 function saveNameToHistory(name) {
     let history = JSON.parse(localStorage.getItem('yib_nameHistory')) || [];
     history = history.filter(item => item !== name);
@@ -21,9 +22,7 @@ function saveNameToHistory(name) {
 }
 
 async function refreshContent() {
-    if (state.isUserActionInProgress) {
-        return;
-    }
+    if (state.isUserActionInProgress) return;
     try {
         const response = await fetch(window.location.href, { headers: { 'Accept': 'text/html' } });
         if (!response.ok) {
@@ -35,7 +34,6 @@ async function refreshContent() {
         const newDoc = parser.parseFromString(html, 'text/html');
         const currentContainer = document.getElementById('content-container');
         const newContainer = newDoc.getElementById('content-container');
-
         if (currentContainer && newContainer) {
             currentContainer.innerHTML = newContainer.innerHTML;
             applyStatefulDOMChanges();
@@ -59,20 +57,53 @@ function stopAutoRefresh() {
     state.autoRefreshTimer = null;
 }
 
+// --- UNIFIED API HANDLER ---
+async function handleModalApiSubmit(modal, url, data, successMessage) {
+    try {
+        const body = new URLSearchParams(data);
+        const response = await fetch(url, { method: 'POST', body: body });
+        
+        const text = await response.text();
+        if (!text) {
+            throw new Error('Server sent an empty response.');
+        }
+        
+        const result = JSON.parse(text);
+        if (!response.ok) {
+            throw new Error(result.error || 'An unknown error occurred.');
+        }
+
+        modal.close();
+        Modal.alert('Success', successMessage || result.success);
+        setTimeout(() => window.location.reload(), 1500);
+    } catch (error) {
+        modal.close();
+        const errorMessage = error.message || 'An unexpected error or invalid server response occurred.';
+        Modal.alert('Error', errorMessage);
+    }
+}
+
+// --- MODAL CREATION FUNCTIONS ---
 function showReportModal(postId) {
-    const csrfToken = document.querySelector('#postform-csrf-token')?.value;
+    const csrfToken = document.querySelector('input[name="csrf_token"]')?.value;
     if (!csrfToken) return Modal.alert('Error', 'Could not find security token.');
-    const content = `<form id="report-form-modal"><textarea name="reason" class="modal-textarea" placeholder="Reason..." required></textarea></form>`;
+    const content = `<form><textarea name="reason" class="modal-textarea" placeholder="Reason..." required></textarea></form>`;
     new Modal(`Report Post No. ${postId}`, content, [
         { id: 'report-cancel', text: 'Cancel' },
-        { id: 'report-submit', text: 'Submit', class: 'button-primary', onClick: (e, modal) => handleApiSubmit(modal, '/report', { post_id: postId, reason: modal.modalEl.querySelector('textarea').value, csrf_token: csrfToken }, "Report submitted successfully.") }
+        {
+            id: 'report-submit', text: 'Submit', class: 'button-primary',
+            onClick: (e, modal) => {
+                const data = { post_id: postId, reason: modal.modalEl.querySelector('textarea').value, csrf_token: csrfToken };
+                handleModalApiSubmit(modal, '/report', data, "Report submitted successfully.");
+            }
+        }
     ]).show();
 }
 
 function showBanModal(link) {
     const { ipHash, cookieHash, csrfToken } = link.dataset;
     const content = `
-        <form id="ban-form-modal" class="modal-form">
+        <form class="modal-form">
             <label for="ban-reason">Reason:</label>
             <input type="text" id="ban-reason" name="reason" required>
             <label for="ban-duration">Duration (hours, 0=perm):</label>
@@ -80,47 +111,82 @@ function showBanModal(link) {
         </form>`;
     new Modal('Apply Ban', content, [
         { id: 'ban-cancel', text: 'Cancel' },
-        { id: 'ban-submit', text: 'Apply Ban', class: 'button-danger', onClick: (e, modal) => {
-            const reason = modal.modalEl.querySelector('#ban-reason').value;
-            const duration = modal.modalEl.querySelector('#ban-duration').value;
-            handleApiSubmit(modal, '/mod/ban', { ip_hash: ipHash, cookie_hash: cookieHash, reason, duration, csrf_token: csrfToken }, "Ban successfully applied.");
-        }}
+        {
+            id: 'ban-submit', text: 'Apply Ban', class: 'button-danger',
+            onClick: (e, modal) => {
+                const data = {
+                    ip_hash: ipHash, cookie_hash: cookieHash,
+                    reason: modal.modalEl.querySelector('#ban-reason').value,
+                    duration: modal.modalEl.querySelector('#ban-duration').value,
+                    csrf_token: csrfToken
+                };
+                handleModalApiSubmit(modal, '/mod/ban', data, "Ban successfully applied.");
+            }
+        }
     ]).show();
 }
 
+function showModDeleteModal(button) {
+    const { postId, csrfToken } = button.dataset;
+    const message = `Are you sure you want to delete post No. ${postId}?`;
+    new Modal('Confirmation Required', `<p>${message}</p>`, [
+        { id: 'modal-cancel', text: 'Cancel' },
+        {
+            id: 'modal-confirm', text: 'Confirm', class: 'button-danger',
+            onClick: (evt, modal) => {
+                const data = { post_id: postId, csrf_token: csrfToken };
+                handleModalApiSubmit(modal, '/mod/delete-post', data, "Post deleted successfully.");
+            }
+        }
+    ]).show();
+}
+
+function showBoardDeleteModal(button) {
+    const { boardId, csrfToken } = button.dataset;
+    const message = `WARNING: Are you sure you want to permanently delete the board /${boardId}/? This will delete all threads, posts, and images and cannot be undone.`;
+    new Modal('Confirmation Required', `<p>${message}</p>`, [
+        { id: 'modal-cancel', text: 'Cancel' },
+        {
+            id: 'modal-confirm', text: 'Confirm', class: 'button-danger',
+            onClick: (evt, modal) => {
+                const data = { board_id: boardId, csrf_token: csrfToken };
+                handleModalApiSubmit(modal, '/mod/delete-board', data, "Board deleted successfully.");
+            }
+        }
+    ]).show();
+}
+
+// --- GLOBAL EVENT LISTENERS ---
 function handleGlobalClick(e) {
     const target = e.target;
-    if (target.classList.contains('postImg')) {
+    if (target.classList.contains('postImg') && target.closest('a')) {
         e.preventDefault();
         toggleImageSize(target);
     } else if (target.classList.contains('hide-thread-link')) {
         e.preventDefault();
-        const boardId = document.body.dataset.boardId;
-        toggleThreadVisibility(boardId, target.dataset.threadId);
+        toggleThreadVisibility(document.body.dataset.boardId, target.dataset.threadId);
     } else if (target.classList.contains('report-link')) {
         e.preventDefault();
         showReportModal(target.dataset.postId);
     } else if (target.classList.contains('ban-link')) {
         e.preventDefault();
         showBanModal(target);
+    } else if (target.classList.contains('js-mod-delete')) {
+        e.preventDefault();
+        showModDeleteModal(target);
+    } else if (target.classList.contains('js-board-delete')) {
+        e.preventDefault();
+        showBoardDeleteModal(target);
     } else if (target.classList.contains('js-quote-link')) {
         e.preventDefault();
         quote(target.dataset.postId);
     }
 }
 
-function handleGlobalMouseOver(e) {
-    if (e.target.classList.contains('backlink')) {
-        showPreview(e);
-    }
-}
+function handleGlobalMouseOver(e) { if (e.target.classList.contains('backlink')) showPreview(e); }
+function handleGlobalMouseOut(e) { if (e.target.classList.contains('backlink')) hidePreview(e); }
 
-function handleGlobalMouseOut(e) {
-    if (e.target.classList.contains('backlink')) {
-        hidePreview();
-    }
-}
-
+// --- INITIALIZATION FUNCTIONS ---
 function initAutoRefresh() {
     const checkbox = document.getElementById('auto-refresh-checkbox');
     const intervalInput = document.getElementById('auto-refresh-interval');
@@ -150,9 +216,7 @@ function initThemeSwitcher() {
     const themeLink = document.getElementById('theme-link');
     const defaultTheme = body.dataset.defaultTheme;
     function applyTheme(theme) {
-        if (theme === 'default' || !theme) {
-            theme = defaultTheme;
-        }
+        if (theme === 'default' || !theme) theme = defaultTheme;
         body.className = `theme-${theme}`;
         themeLink.href = `/static/themes/${theme}.css`;
     }
@@ -194,23 +258,40 @@ function initNameHistory() {
 function initBoardSelector() {
     const selector = document.getElementById('board-switcher');
     if (!selector) return;
-
     selector.addEventListener('change', () => {
         const boardUrl = selector.value;
-        if (boardUrl) {
-            window.location.href = boardUrl;
-        }
+        if (boardUrl) window.location.href = boardUrl;
     });
 }
 
-function init() {
-    document.addEventListener('click', handleGlobalClick);
-    document.addEventListener('mouseover', handleGlobalMouseOver);
-    document.addEventListener('mouseout', handleGlobalMouseOut);
-    window.addEventListener('hashchange', highlightTargetPost);
+function initManualBanForm() {
+    const form = document.getElementById('manual-ban-form');
+    if (!form) return;
+    form.addEventListener('submit', function(event) {
+        event.preventDefault();
+        const dummyModal = { close: () => {} }; // For API handler
+        const data = {
+            ip_hash: document.getElementById('manual-ban-ip-hash').value,
+            cookie_hash: document.getElementById('manual-ban-cookie-hash').value,
+            reason: document.getElementById('manual-ban-reason').value,
+            duration: document.getElementById('manual-ban-duration').value,
+            csrf_token: document.getElementById('manual-ban-csrf').value,
+        };
+        if (!data.ip_hash && !data.cookie_hash) {
+            Modal.alert('Error', 'You must provide at least one hash to ban.');
+            return;
+        }
+        const promise = handleModalApiSubmit(dummyModal, '/mod/ban', data, "Ban successfully applied.");
+        promise.then(() => form.reset()).catch(() => {});
+    });
+}
 
+
+function initMainPostForm() {
     const postForm = document.querySelector('.postForm > form');
-    postForm?.addEventListener('submit', async (e) => {
+    if (!postForm) return;
+
+    postForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         state.isUserActionInProgress = true;
         stopAutoRefresh();
@@ -222,29 +303,49 @@ function init() {
             if (nameInput && nameInput.value) {
                 saveNameToHistory(nameInput.value);
             }
+
             const currentUrl = new URL(window.location.href);
             const redirectUrl = new URL(result.redirect, window.location.origin);
+
             if (currentUrl.pathname === redirectUrl.pathname) {
-                window.location.assign(result.redirect);
+
+                const newHash = redirectUrl.hash;
+                window.location.hash = newHash;
                 window.location.reload();
+
             } else {
                 window.location.assign(result.redirect);
             }
+            
             return;
         }
-        
+
         state.isUserActionInProgress = false;
         const checkbox = document.getElementById('auto-refresh-checkbox');
         if (checkbox && checkbox.checked) {
             startAutoRefresh();
         }
     });
+}
 
-    initAutoRefresh();
+// --- MAIN INITIALIZATION ---
+function init() {
+    document.addEventListener('click', handleGlobalClick);
+    
+    initMainPostForm();
+    initManualBanForm();
     initThemeSwitcher();
-    initNameHistory();
     initBoardSelector();
-    applyStatefulDOMChanges();
+    initNameHistory();
+    initAutoRefresh();
+
+    // Run logic specific to user-facing pages.
+    if (document.body.id !== 'mod-page') {
+        document.addEventListener('mouseover', handleGlobalMouseOver);
+        document.addEventListener('mouseout', handleGlobalMouseOut);
+        window.addEventListener('hashchange', highlightTargetPost);
+        applyStatefulDOMChanges();
+    }
 }
 
 if (document.readyState === 'loading') {

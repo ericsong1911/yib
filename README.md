@@ -33,12 +33,14 @@ A comprehensive moderation panel accessible only from the local network by defau
 *   **Post & Thread Management:** Delete any post, lock threads, and sticky threads.
 *   **User Management:** Ban users by IP hash and/or cookie hash (temporary or permanent).
 *   **Auditing:** Look up a user's entire post history by their IP or cookie hash. A persistent log records all moderator actions.
+*   **Database Backups:** Create live, on-demand database backups directly from the moderation panel.
 *   **Board & Category Management:** Create, edit, and delete boards and categories on the fly.
 *   **Global Banner:** Post a site-wide announcement banner.
 
 ### Technical Features
-*   **Secure by Default:** Built-in CSRF protection, automatic XSS prevention, and salted IP/cookie hashing.
-*   **Performance:** Smart, batch-querying database logic to avoid N+1 problems.
+*   **Secure by Default:** Built-in CSRF protection, strict CSP headers, automatic XSS prevention, secure upload file handling, and salted IP/cookie hashing.
+*   **Performance:** Automatic thumbnail generation to preserve bandwidth, smart batch-querying database logic to avoid N+1 problems.
+*   **Maintainable & Robust:** Structured JSON-formatted logging for debugging and monitoring, automated test suite to ensure code stability, database migration system to handle schema changes.
 *   **Self-Contained:** Single binary executable with no external runtime dependencies.
 *   **Configurable:** Key settings like port and database path can be configured via environment variables.
 
@@ -70,7 +72,7 @@ This is the easiest way to get started.
 
 ### Option 2: From Source
 
-You will need Git and the Go toolchain (version 1.18 or later) installed.
+You will need Git and the Go toolchain (version 1.21 or later) installed.
 
 1.  **Clone the repository:**
     ```bash
@@ -99,10 +101,20 @@ You will need Git and the Go toolchain (version 1.18 or later) installed.
 | --------------- | ---------------------------------------- | ----------------------------------------------- |
 | `YIB_PORT`      | The port for the web server to listen on.| `8080`                                          |
 | `YIB_DB_PATH`   | The path to the SQLite database file.    | `./yalie.db?_journal_mode=WAL&_foreign_keys=on` |
+| `YIB_BACKUP_DIR`| The directory to store database backups. | `./backups`                                     |
+
+#### Rate Limiter Configuration
+| Variable         | Description                                                            | Default          |
+| ---------------- | ---------------------------------------------------------------------- | ---------------- |
+| `YIB_RATE_EVERY` | The time duration between allowed bursts of posts (e.g., "30s", "1m"). | `30s`            |
+| `YIB_RATE_BURST` | The number of posts allowed in a single burst.                         | `3`              |
+| `YIB_RATE_PRUNE` | How often to clean up old rate limiter entries from memory.            | `1h`             |
+| `YIB_RATE_EXPIRE`| How long an inactive user is kept in the rate limiter before pruning.  | `24h`            |
+
 
 **Example:**
 ```bash
-YIB_PORT=8888 YIB_DB_PATH=/var/data/myboard.db ./yib
+YIB_PORT=8888 YIB_DB_PATH=/var/data/myboard.db YIB_BACKUP_DIR=/var/backups ./yib
 ```
 
 ## License

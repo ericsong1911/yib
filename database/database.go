@@ -1,11 +1,10 @@
 // yib/database/database.go
-
 package database
 
 import (
 	"database/sql"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,18 +19,27 @@ import (
 // DatabaseService is the central struct for all database operations.
 type DatabaseService struct {
 	DB         *sql.DB
+	logger     *slog.Logger
+	dsn        string
 	boardCache map[string]*models.BoardConfig
 	cacheMu    sync.RWMutex
 }
 
-// InitDB connects to the database, executes the schema, and seeds default data.
-func InitDB(dataSourceName string) (*DatabaseService, error) {
+// InitDB connects to the database, runs migrations, and seeds default data.
+func InitDB(dataSourceName string, logger *slog.Logger) (*DatabaseService, error) {
 	db, err := sql.Open("sqlite3", dataSourceName)
 	if err != nil {
 		return nil, err
 	}
+
+	// Run the base schema to ensure all tables exist.
 	if _, err = db.Exec(schema); err != nil {
-		return nil, fmt.Errorf("failed to execute schema: %w", err)
+		return nil, fmt.Errorf("failed to execute base schema: %w", err)
+	}
+
+	// NEW-FEATURE: Run versioned migrations
+	if err := runMigrations(db, logger); err != nil {
+		return nil, fmt.Errorf("database migration failed: %w", err)
 	}
 
 	// Seed database if empty
@@ -54,22 +62,84 @@ func InitDB(dataSourceName string) (*DatabaseService, error) {
 	if err := db.QueryRow("SELECT COUNT(*) FROM posts_fts").Scan(&ftsCount); err == nil && ftsCount == 0 {
 		var postCount int
 		if err := db.QueryRow("SELECT COUNT(*) FROM posts").Scan(&postCount); err == nil && postCount > 0 {
-			log.Println("FTS table is empty, performing one-time data migration for existing posts...")
+			logger.Info("FTS table is empty, performing one-time data migration for existing posts...")
 			_, err := db.Exec(`INSERT INTO posts_fts(rowid, subject, content) SELECT p.id, t.subject, p.content FROM posts p JOIN threads t ON p.thread_id = t.id;`)
 			if err != nil {
-				log.Printf("CRITICAL: Failed to migrate existing posts to FTS table: %v", err)
+				logger.Error("CRITICAL: Failed to migrate existing posts to FTS table", "error", err)
 			} else {
-				log.Println("FTS data migration complete.")
+				logger.Info("FTS data migration complete.")
 			}
 		}
 	}
 
-	log.Println("Database initialized and cache ready.")
+	logger.Info("Database initialized and cache ready.")
 
 	return &DatabaseService{
 		DB:         db,
+		logger:     logger,
+		dsn:        dataSourceName, // Store the DSN
 		boardCache: make(map[string]*models.BoardConfig),
 	}, nil
+}
+
+// BackupDatabase performs an online backup of the live SQLite database using VACUUM INTO.
+func (ds *DatabaseService) BackupDatabase() (string, error) {
+	if utils.BackupDir == "" {
+		return "", fmt.Errorf("backup directory is not configured")
+	}
+	if err := os.MkdirAll(utils.BackupDir, 0755); err != nil {
+		return "", fmt.Errorf("could not create backup directory %s: %w", utils.BackupDir, err)
+	}
+
+	timestamp := time.Now().UTC().Format("2006-01-02_15-04-05")
+	backupFilename := fmt.Sprintf("yib_backup_%s.db", timestamp)
+	backupPath := filepath.Join(utils.BackupDir, backupFilename)
+
+	ds.logger.Info("Starting database backup", "destination", backupPath)
+
+	_, err := ds.DB.Exec("VACUUM INTO ?", backupPath)
+	if err != nil {
+		os.Remove(backupPath)
+		return "", fmt.Errorf("VACUUM INTO command failed: %w", err)
+	}
+
+	return backupPath, nil
+}
+
+// runMigrations applies all un-applied migrations.
+func runMigrations(db *sql.DB, logger *slog.Logger) error {
+	var latestVersion uint
+	err := db.QueryRow("SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1").Scan(&latestVersion)
+	if err != nil && err != sql.ErrNoRows {
+		return fmt.Errorf("could not get db version: %w", err)
+	}
+
+	logger.Info("Current database schema version", "version", latestVersion)
+
+	for _, m := range allMigrations {
+		if m.Version > latestVersion {
+			logger.Info("Applying migration", "version", m.Version)
+			tx, err := db.Begin()
+			if err != nil {
+				return err
+			}
+
+			if _, err := tx.Exec(m.Query); err != nil {
+				tx.Rollback()
+				return fmt.Errorf("failed to apply migration v%d: %w", m.Version, err)
+			}
+			if _, err := tx.Exec("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)", m.Version, utils.GetSQLTime()); err != nil {
+				tx.Rollback()
+				return fmt.Errorf("failed to record migration v%d: %w", m.Version, err)
+			}
+
+			if err := tx.Commit(); err != nil {
+				return fmt.Errorf("failed to commit migration v%d: %w", m.Version, err)
+			}
+			logger.Info("Successfully applied migration", "version", m.Version)
+		}
+	}
+	return nil
 }
 
 // GetBoard fetches board configuration, using the instance's cache.
@@ -113,9 +183,10 @@ func (ds *DatabaseService) GetThreadCount(boardID string, archived bool) (int, e
 // GetThreadsForBoard retrieves a paginated list of threads for a board page.
 func (ds *DatabaseService) GetThreadsForBoard(boardID string, archived bool, page, pageSize int, fetchReplies bool) ([]models.Thread, error) {
 	offset := (page - 1) * pageSize
+	// Select new thumbnail and moderator columns
 	rows, err := ds.DB.Query(`
         SELECT t.id, t.subject, t.bump, t.reply_count, t.image_count, t.locked, t.sticky,
-               p.id, p.name, p.tripcode, p.content, p.image_path, p.timestamp, p.ip_hash, p.cookie_hash
+               p.id, p.name, p.tripcode, p.content, p.image_path, p.thumbnail_path, p.timestamp, p.ip_hash, p.cookie_hash, p.is_moderator
         FROM threads t
         JOIN posts p ON t.id = p.thread_id AND p.id = (SELECT MIN(id) FROM posts WHERE thread_id = t.id)
         WHERE t.board_id = ? AND t.archived = ?
@@ -131,9 +202,10 @@ func (ds *DatabaseService) GetThreadsForBoard(boardID string, archived bool, pag
 		var t models.Thread
 		t.BoardID = boardID
 		var op models.Post
+		// Scan new columns
 		if err := rows.Scan(&t.ID, &t.Subject, &t.Bump, &t.ReplyCount, &t.ImageCount, &t.Locked, &t.Sticky,
-			&op.ID, &op.Name, &op.Tripcode, &op.Content, &op.ImagePath, &op.Timestamp, &op.IPHash, &op.CookieHash); err != nil {
-			log.Printf("ERROR: Failed to scan thread row: %v", err)
+			&op.ID, &op.Name, &op.Tripcode, &op.Content, &op.ImagePath, &op.ThumbnailPath, &op.Timestamp, &op.IPHash, &op.CookieHash, &op.IsModerator); err != nil {
+			ds.logger.Error("Failed to scan thread row", "error", err)
 			continue
 		}
 		op.IsOp, op.BoardID, op.ThreadID, op.Subject = true, boardID, t.ID, t.Subject
@@ -174,7 +246,8 @@ func (ds *DatabaseService) GetThreadsForBoard(boardID string, archived bool, pag
 
 // GetPostsForThread fetches a single thread and all its posts.
 func (ds *DatabaseService) GetPostsForThread(threadID int64) ([]models.Post, error) {
-	rows, err := ds.DB.Query("SELECT id, board_id, thread_id, name, tripcode, content, image_path, timestamp, ip_hash, cookie_hash FROM posts WHERE thread_id = ? ORDER BY id ASC", threadID)
+	// Select new columns
+	rows, err := ds.DB.Query("SELECT id, board_id, thread_id, name, tripcode, content, image_path, thumbnail_path, timestamp, ip_hash, cookie_hash, is_moderator FROM posts WHERE thread_id = ? ORDER BY id ASC", threadID)
 	if err != nil {
 		return nil, err
 	}
@@ -183,8 +256,9 @@ func (ds *DatabaseService) GetPostsForThread(threadID int64) ([]models.Post, err
 	var posts []models.Post
 	for rows.Next() {
 		var p models.Post
-		if err := rows.Scan(&p.ID, &p.BoardID, &p.ThreadID, &p.Name, &p.Tripcode, &p.Content, &p.ImagePath, &p.Timestamp, &p.IPHash, &p.CookieHash); err != nil {
-			log.Printf("ERROR: Failed to scan post row: %v", err)
+		// Scan new columns
+		if err := rows.Scan(&p.ID, &p.BoardID, &p.ThreadID, &p.Name, &p.Tripcode, &p.Content, &p.ImagePath, &p.ThumbnailPath, &p.Timestamp, &p.IPHash, &p.CookieHash, &p.IsModerator); err != nil {
+			ds.logger.Error("Failed to scan post row", "error", err)
 			continue
 		}
 		posts = append(posts, p)
@@ -218,14 +292,15 @@ func (ds *DatabaseService) GetPostsForThread(threadID int64) ([]models.Post, err
 func (ds *DatabaseService) GetPostByID(postID int64) (*models.Post, error) {
 	var p models.Post
 	var subject sql.NullString
+	// Select new columns
 	err := ds.DB.QueryRow(`
-		SELECT p.id, p.board_id, p.thread_id, p.name, p.tripcode, p.content, p.image_path, p.timestamp, p.ip_hash, p.cookie_hash,
+		SELECT p.id, p.board_id, p.thread_id, p.name, p.tripcode, p.content, p.image_path, p.thumbnail_path, p.timestamp, p.ip_hash, p.cookie_hash, p.is_moderator,
 		       t.subject,
 		       (SELECT MIN(id) FROM posts WHERE thread_id = p.thread_id) = p.id as is_op
 		FROM posts p JOIN threads t ON p.thread_id = t.id
 		WHERE p.id = ?`, postID).Scan(
 		&p.ID, &p.BoardID, &p.ThreadID, &p.Name, &p.Tripcode, &p.Content,
-		&p.ImagePath, &p.Timestamp, &p.IPHash, &p.CookieHash, &subject, &p.IsOp,
+		&p.ImagePath, &p.ThumbnailPath, &p.Timestamp, &p.IPHash, &p.CookieHash, &p.IsModerator, &subject, &p.IsOp,
 	)
 	if err != nil {
 		return nil, err
@@ -257,7 +332,7 @@ func (ds *DatabaseService) GetBanDetails(ipHash, cookieHash string) (models.Ban,
 
 	if err != nil {
 		if err != sql.ErrNoRows {
-			log.Printf("ERROR: Failed to query for ban details: %v", err)
+			ds.logger.Error("Failed to query for ban details", "error", err)
 		}
 		return ban, false
 	}
@@ -272,38 +347,50 @@ func (ds *DatabaseService) DeletePost(postID int64, uploadDir string, modHash, d
 	}
 	defer func() {
 		if rerr := tx.Rollback(); rerr != nil && rerr != sql.ErrTxDone {
-			log.Printf("ERROR: Failed to rollback transaction in DeletePost: %v", rerr)
+			ds.logger.Error("Failed to rollback transaction in DeletePost", "error", rerr)
 		}
 	}()
 
-	var imagePath, imageHash sql.NullString
+	var imagePath, thumbnailPath, imageHash sql.NullString
 	var threadID int64
-	err = tx.QueryRow(`SELECT p.board_id, p.thread_id, p.image_path, p.image_hash, (SELECT id FROM posts WHERE thread_id = p.thread_id ORDER BY id ASC LIMIT 1) = p.id as is_op FROM posts p WHERE id = ?`, postID).Scan(&boardID, &threadID, &imagePath, &imageHash, &isOp)
+	// Select thumbnail path as well
+	err = tx.QueryRow(`SELECT p.board_id, p.thread_id, p.image_path, p.thumbnail_path, p.image_hash, (SELECT id FROM posts WHERE thread_id = p.thread_id ORDER BY id ASC LIMIT 1) = p.id as is_op FROM posts p WHERE id = ?`, postID).Scan(&boardID, &threadID, &imagePath, &thumbnailPath, &imageHash, &isOp)
 	if err != nil {
 		return "", false, fmt.Errorf("post not found: %w", err)
 	}
 
-	imagesToCheck := make(map[string]string)
+	type fileToDelete struct{ Path, Hash string }
+	filesToCheck := make(map[string]fileToDelete)
+
 	if isOp {
-		rows, err := tx.Query("SELECT image_path, image_hash FROM posts WHERE thread_id = ? AND image_path IS NOT NULL AND image_path != ''", threadID)
+		// Get both image and thumbnail paths for all posts in the thread
+		rows, err := tx.Query("SELECT image_path, thumbnail_path, image_hash FROM posts WHERE thread_id = ? AND image_path IS NOT NULL AND image_path != ''", threadID)
 		if err != nil {
 			return "", false, fmt.Errorf("failed to query images for thread deletion: %w", err)
 		}
 		for rows.Next() {
-			var p, h string
-			if err := rows.Scan(&p, &h); err == nil {
-				imagesToCheck[p] = h
+			var p, t, h sql.NullString
+			if err := rows.Scan(&p, &t, &h); err == nil {
+				if p.Valid {
+					filesToCheck[p.String] = fileToDelete{Path: p.String, Hash: h.String}
+				}
+				if t.Valid {
+					filesToCheck[t.String] = fileToDelete{Path: t.String, Hash: h.String}
+				}
 			}
 		}
 		if err := rows.Close(); err != nil {
-			log.Printf("WARNING: Failed to close rows for thread images: %v", err)
+			ds.logger.Warn("Failed to close rows for thread images", "error", err)
 		}
 		if _, err := tx.Exec("DELETE FROM threads WHERE id = ?", threadID); err != nil {
 			return "", false, fmt.Errorf("failed to delete thread: %w", err)
 		}
 	} else {
 		if imagePath.Valid && imageHash.Valid {
-			imagesToCheck[imagePath.String] = imageHash.String
+			filesToCheck[imagePath.String] = fileToDelete{Path: imagePath.String, Hash: imageHash.String}
+			if thumbnailPath.Valid {
+				filesToCheck[thumbnailPath.String] = fileToDelete{Path: thumbnailPath.String, Hash: imageHash.String}
+			}
 		}
 		if _, err := tx.Exec("DELETE FROM posts WHERE id = ?", postID); err != nil {
 			return "", false, fmt.Errorf("failed to delete reply post: %w", err)
@@ -331,16 +418,16 @@ func (ds *DatabaseService) DeletePost(postID int64, uploadDir string, modHash, d
 		}
 	}
 
-	for path, hash := range imagesToCheck {
+	for _, file := range filesToCheck {
 		var count int
-		if err := tx.QueryRow("SELECT COUNT(*) FROM posts WHERE image_hash = ?", hash).Scan(&count); err != nil {
-			log.Printf("WARNING: Failed to check for duplicate images with hash %s: %v", hash, err)
+		if err := tx.QueryRow("SELECT COUNT(*) FROM posts WHERE image_hash = ?", file.Hash).Scan(&count); err != nil {
+			ds.logger.Warn("Failed to check for duplicate images", "hash", file.Hash, "error", err)
 			continue
 		}
 		if count == 0 {
-			filePath := filepath.Join(uploadDir, filepath.Base(path))
+			filePath := filepath.Join(uploadDir, filepath.Base(file.Path))
 			if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
-				log.Printf("WARNING: Failed to remove image file %s: %v", filePath, err)
+				ds.logger.Warn("Failed to remove image file", "path", filePath, "error", err)
 			}
 		}
 	}
@@ -355,26 +442,35 @@ func (ds *DatabaseService) DeleteBoard(boardID, uploadDir, modHash string) error
 	}
 	defer func() {
 		if rerr := tx.Rollback(); rerr != nil && rerr != sql.ErrTxDone {
-			log.Printf("ERROR: Failed to rollback transaction in DeleteBoard: %v", rerr)
+			ds.logger.Error("Failed to rollback transaction in DeleteBoard", "error", rerr)
 		}
 	}()
 
-	rows, err := tx.Query("SELECT image_path FROM posts WHERE board_id = ?", boardID)
+	// Select both image and thumbnail paths for deletion
+	rows, err := tx.Query("SELECT image_path, thumbnail_path FROM posts WHERE board_id = ?", boardID)
 	if err != nil {
 		return fmt.Errorf("failed to query image paths for board deletion: %w", err)
 	}
 
 	for rows.Next() {
-		var imgPath sql.NullString
-		if err := rows.Scan(&imgPath); err == nil && imgPath.Valid && imgPath.String != "" {
-			filePath := filepath.Join(uploadDir, filepath.Base(imgPath.String))
-			if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
-				log.Printf("WARNING: Failed to remove image file %s during board deletion: %v", filePath, err)
+		var imgPath, thumbPath sql.NullString
+		if err := rows.Scan(&imgPath, &thumbPath); err == nil {
+			if imgPath.Valid && imgPath.String != "" {
+				filePath := filepath.Join(uploadDir, filepath.Base(imgPath.String))
+				if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
+					ds.logger.Warn("Failed to remove image file during board deletion", "path", filePath, "error", err)
+				}
+			}
+			if thumbPath.Valid && thumbPath.String != "" {
+				filePath := filepath.Join(uploadDir, filepath.Base(thumbPath.String))
+				if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
+					ds.logger.Warn("Failed to remove thumbnail file during board deletion", "path", filePath, "error", err)
+				}
 			}
 		}
 	}
 	if err := rows.Close(); err != nil {
-		log.Printf("WARNING: Failed to close rows for board images: %v", err)
+		ds.logger.Warn("Failed to close rows for board images", "error", err)
 	}
 
 	if _, err := tx.Exec("DELETE FROM boards WHERE id = ?", boardID); err != nil {
@@ -411,7 +507,7 @@ func (ds *DatabaseService) SearchPosts(query, boardID string) ([]models.Post, er
 
 	rows, err := ds.DB.Query(sql, args...)
 	if err != nil {
-		log.Printf("ERROR: FTS Search failed: %v", err)
+		ds.logger.Error("FTS Search failed", "error", err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -419,7 +515,7 @@ func (ds *DatabaseService) SearchPosts(query, boardID string) ([]models.Post, er
 	for rows.Next() {
 		var p models.Post
 		if err := rows.Scan(&p.ID, &p.BoardID, &p.ThreadID, &p.Name, &p.Tripcode, &p.Content, &p.Timestamp, &p.Subject, &p.IsOp); err != nil {
-			log.Printf("ERROR: Failed to scan post during search: %v", err)
+			ds.logger.Error("Failed to scan post during search", "error", err)
 			continue
 		}
 		posts = append(posts, p)
@@ -467,28 +563,30 @@ func (ds *DatabaseService) fetchAndAssignReplies(threadMap map[int64]*models.Thr
 		threadIDs = append(threadIDs, id)
 	}
 
+	// Select new columns
 	query := `
         WITH RankedReplies AS (
             SELECT p.*, ROW_NUMBER() OVER(PARTITION BY p.thread_id ORDER BY p.id DESC) as rn
             FROM posts p WHERE p.thread_id IN (?` + strings.Repeat(",?", len(threadIDs)-1) + `) AND p.id != (SELECT MIN(id) FROM posts WHERE thread_id=p.thread_id)
         )
-        SELECT id, board_id, thread_id, name, tripcode, content, image_path, timestamp, ip_hash, cookie_hash
+        SELECT id, board_id, thread_id, name, tripcode, content, image_path, thumbnail_path, timestamp, ip_hash, cookie_hash, is_moderator
         FROM RankedReplies WHERE rn <= 3 ORDER BY thread_id, id ASC`
 	replyRows, err := ds.DB.Query(query, threadIDs...)
 	if err != nil {
-		log.Printf("ERROR: Failed to fetch replies for board view: %v", err)
+		ds.logger.Error("Failed to fetch replies for board view", "error", err)
 		return
 	}
 	defer func() {
 		if err := replyRows.Close(); err != nil {
-			log.Printf("ERROR: Failed to close rows in fetchAndAssignReplies: %v", err)
+			ds.logger.Error("Failed to close rows in fetchAndAssignReplies", "error", err)
 		}
 	}()
 
 	for replyRows.Next() {
 		var p models.Post
-		if err := replyRows.Scan(&p.ID, &p.BoardID, &p.ThreadID, &p.Name, &p.Tripcode, &p.Content, &p.ImagePath, &p.Timestamp, &p.IPHash, &p.CookieHash); err != nil {
-			log.Printf("ERROR: Failed to scan reply post: %v", err)
+		// Scan new columns
+		if err := replyRows.Scan(&p.ID, &p.BoardID, &p.ThreadID, &p.Name, &p.Tripcode, &p.Content, &p.ImagePath, &p.ThumbnailPath, &p.Timestamp, &p.IPHash, &p.CookieHash, &p.IsModerator); err != nil {
+			ds.logger.Error("Failed to scan reply post", "error", err)
 			continue
 		}
 		if thread, ok := threadMap[p.ThreadID]; ok {
@@ -497,7 +595,7 @@ func (ds *DatabaseService) fetchAndAssignReplies(threadMap map[int64]*models.Thr
 		}
 	}
 	if err := replyRows.Err(); err != nil {
-		log.Printf("ERROR: Row error during reply scan: %v", err)
+		ds.logger.Error("Row error during reply scan", "error", err)
 	}
 }
 func (ds *DatabaseService) fetchAndAssignBacklinks(postIDs []interface{}, assignFunc func(targetID, backlinkID int64)) {
@@ -507,12 +605,12 @@ func (ds *DatabaseService) fetchAndAssignBacklinks(postIDs []interface{}, assign
 	query := "SELECT target_post_id, source_post_id FROM backlinks WHERE target_post_id IN (?" + strings.Repeat(",?", len(postIDs)-1) + ")"
 	rows, err := ds.DB.Query(query, postIDs...)
 	if err != nil {
-		log.Printf("ERROR: Failed to query backlinks: %v", err)
+		ds.logger.Error("Failed to query backlinks", "error", err)
 		return
 	}
 	defer func() {
 		if err := rows.Close(); err != nil {
-			log.Printf("ERROR: Failed to close rows in fetchAndAssignBacklinks: %v", err)
+			ds.logger.Error("Failed to close rows in fetchAndAssignBacklinks", "error", err)
 		}
 	}()
 	for rows.Next() {
@@ -520,10 +618,10 @@ func (ds *DatabaseService) fetchAndAssignBacklinks(postIDs []interface{}, assign
 		if err := rows.Scan(&targetID, &sourceID); err == nil {
 			assignFunc(targetID, sourceID)
 		} else {
-			log.Printf("ERROR: Failed to scan backlink row: %v", err)
+			ds.logger.Error("Failed to scan backlink row", "error", err)
 		}
 	}
 	if err := rows.Err(); err != nil {
-		log.Printf("ERROR: Row error during backlink scan: %v", err)
+		ds.logger.Error("Row error during backlink scan", "error", err)
 	}
 }

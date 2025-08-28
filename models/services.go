@@ -16,9 +16,13 @@ import (
 // --- Stateful Services ---
 
 type RateLimiter struct {
-	Mu       sync.RWMutex
-	Limiters map[string]*rate.Limiter
-	LastSeen map[string]time.Time
+	Mu          sync.RWMutex
+	Limiters    map[string]*rate.Limiter
+	LastSeen    map[string]time.Time
+	rate        rate.Limit
+	burst       int
+	pruneTicker *time.Ticker
+	expireAfter time.Duration
 }
 
 type ChallengeStore struct {
@@ -28,11 +32,15 @@ type ChallengeStore struct {
 
 // --- Rate Limiter Methods ---
 
-// NewRateLimiter creates and starts a new rate limiter.
-func NewRateLimiter() *RateLimiter {
+// NewRateLimiter creates and starts a new configurable rate limiter.
+func NewRateLimiter(every time.Duration, burst int, pruneInterval, expireAfter time.Duration) *RateLimiter {
 	rl := &RateLimiter{
-		Limiters: make(map[string]*rate.Limiter),
-		LastSeen: make(map[string]time.Time),
+		Limiters:    make(map[string]*rate.Limiter),
+		LastSeen:    make(map[string]time.Time),
+		rate:        rate.Every(every),
+		burst:       burst,
+		pruneTicker: time.NewTicker(pruneInterval),
+		expireAfter: expireAfter,
 	}
 	go rl.cleanup()
 	return rl
@@ -44,7 +52,7 @@ func (rl *RateLimiter) GetLimiter(ip string) *rate.Limiter {
 	defer rl.Mu.Unlock()
 	limiter, exists := rl.Limiters[ip]
 	if !exists {
-		limiter = rate.NewLimiter(rate.Every(30*time.Second), 3)
+		limiter = rate.NewLimiter(rl.rate, rl.burst)
 		rl.Limiters[ip] = limiter
 	}
 	rl.LastSeen[ip] = time.Now()
@@ -53,9 +61,9 @@ func (rl *RateLimiter) GetLimiter(ip string) *rate.Limiter {
 
 // cleanup periodically removes old entries from the rate limiter maps.
 func (rl *RateLimiter) cleanup() {
-	for range time.Tick(1 * time.Hour) {
+	for range rl.pruneTicker.C {
 		rl.Mu.Lock()
-		cutoff := time.Now().Add(-24 * time.Hour)
+		cutoff := time.Now().Add(-rl.expireAfter)
 		for ip, lastSeen := range rl.LastSeen {
 			if lastSeen.Before(cutoff) {
 				delete(rl.Limiters, ip)
@@ -94,17 +102,16 @@ func (cs *ChallengeStore) GenerateChallenge() (token, question string) {
 
 // Verify checks if a challenge answer is correct for a given token.
 func (cs *ChallengeStore) Verify(token, answer string) bool {
-	cs.Mu.Lock() // Use a full write lock to safely read and delete
+	cs.Mu.Lock()
 	defer cs.Mu.Unlock()
 
 	correctAnswer, exists := cs.Challenges[token]
-	
+
 	delete(cs.Challenges, token)
 
 	if !exists {
 		return false // Token was invalid, expired, or already used.
 	}
 
-	// Finally, perform the comparison on the retrieved answer.
 	return subtle.ConstantTimeCompare([]byte(answer), []byte(correctAnswer)) == 1
 }

@@ -1,12 +1,16 @@
+// yib/middleware.go
 package handlers
 
 import (
 	"context"
 	"crypto/subtle"
+	"log/slog"
 	"net"
 	"net/http"
+	"time"
 	"yib/utils"
 
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
 )
 
@@ -26,6 +30,42 @@ func AppContextMiddleware(app App, next http.Handler) http.Handler {
 		ctx := context.WithValue(r.Context(), AppKey, app)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+// SecurityHeadersMiddleware adds important security headers to all responses.
+func SecurityHeadersMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		csp := "default-src 'self'; img-src 'self' data:; media-src 'self' data:; style-src 'self'; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; form-action 'self';"
+		w.Header().Set("Content-Security-Policy", csp)
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		next.ServeHTTP(w, r)
+	})
+}
+
+// NewStructuredLogger returns a middleware that logs requests using slog.
+func NewStructuredLogger(logger *slog.Logger) func(next http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
+			start := time.Now()
+
+			defer func() {
+				logger.Info("Request completed",
+					"method", r.Method,
+					"path", r.URL.Path,
+					"status", ww.Status(),
+					"duration", time.Since(start),
+					"size", ww.BytesWritten(),
+					"remote_ip", utils.GetIPAddress(r),
+					"request_id", middleware.GetReqID(r.Context()),
+				)
+			}()
+
+			next.ServeHTTP(ww, r)
+		})
+	}
 }
 
 // CSRFMiddleware protects against Cross-Site Request Forgery attacks.

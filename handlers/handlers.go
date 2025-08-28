@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"log"
+	"log/slog"
 	"math"
 	"net/http"
 	"regexp"
@@ -26,28 +27,28 @@ type App interface {
 	DB() *database.DatabaseService
 	RateLimiter() *models.RateLimiter
 	Challenges() *models.ChallengeStore
+	Logger() *slog.Logger
 	UploadDir() string
 	BannerFile() string
 }
 
 // --- Board List Cache ---
 var (
-    boardListCache []models.NavBoardEntry
-    cacheLock      sync.RWMutex
+	boardListCache []models.NavBoardEntry
+	cacheLock      sync.RWMutex
 )
 
 // getBoardList is a cached function to retrieve all boards for the nav dropdown.
 func getBoardList(app App) []models.NavBoardEntry {
 	cacheLock.RLock()
-
 	if boardListCache != nil {
 		cacheLock.RUnlock()
 		return boardListCache
 	}
-	cacheLock.RUnlock() 
+	cacheLock.RUnlock()
 
 	cacheLock.Lock()
-	defer cacheLock.Unlock() 
+	defer cacheLock.Unlock()
 
 	if boardListCache != nil {
 		return boardListCache
@@ -55,25 +56,23 @@ func getBoardList(app App) []models.NavBoardEntry {
 
 	rows, err := app.DB().DB.Query("SELECT id, name FROM boards WHERE archived = 0 ORDER BY id")
 	if err != nil {
-		log.Printf("ERROR: Failed to query board list for global dropdown: %v", err)
-		return nil 
+		app.Logger().Error("Failed to query board list for global dropdown", "error", err)
+		return nil
 	}
 	defer rows.Close()
 
 	var boards []models.NavBoardEntry
 	for rows.Next() {
-		var b models.NavBoardEntry 
-
+		var b models.NavBoardEntry
 		if err := rows.Scan(&b.ID, &b.Name); err == nil {
 			boards = append(boards, b)
 		}
 	}
 	if err := rows.Err(); err != nil {
-		log.Printf("ERROR: Row error scanning board list for global dropdown: %v", err)
+		app.Logger().Error("Row error scanning board list for global dropdown", "error", err)
 	}
 
 	boardListCache = boards
-
 	return boards
 }
 
@@ -85,10 +84,10 @@ func ClearBoardListCache() {
 }
 
 // respondJSON sends a JSON response with a given status code.
-func respondJSON(w http.ResponseWriter, status int, payload interface{}) {
+func respondJSON(w http.ResponseWriter, status int, payload interface{}, app App) {
 	response, err := json.Marshal(payload)
 	if err != nil {
-		log.Printf("ERROR: Failed to marshal JSON payload: %v", err)
+		app.Logger().Error("Failed to marshal JSON payload", "error", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(`{"error":"Failed to marshal JSON response"}`))
 		return
@@ -112,7 +111,7 @@ func HandleNewChallenge(w http.ResponseWriter, r *http.Request, app App) {
 		"token":    token,
 		"question": question,
 	}
-	respondJSON(w, http.StatusOK, payload)
+	respondJSON(w, http.StatusOK, payload, app)
 }
 
 // Page represents a single link in the pagination control.
@@ -124,7 +123,7 @@ type Page struct {
 
 // PageRouter is the main router for serving different pages based on the URL path.
 func PageRouter(w http.ResponseWriter, r *http.Request, app App) {
-	// Let chi handle the API routes
+	logger := app.Logger().With("handler", "PageRouter")
 	if strings.HasPrefix(r.URL.Path, "/api/") {
 		http.NotFound(w, r)
 		return
@@ -154,7 +153,7 @@ func PageRouter(w http.ResponseWriter, r *http.Request, app App) {
 
 	boardConfig, err := app.DB().GetBoard(boardID)
 	if err != nil {
-		log.Printf("INFO: User attempted to access non-existent board /%s/", boardID)
+		logger.Info("User attempted to access non-existent board", "board_id", boardID)
 		http.NotFound(w, r)
 		return
 	}
@@ -195,7 +194,7 @@ func HandleHome(w http.ResponseWriter, r *http.Request, app App) {
         LEFT JOIN boards b ON c.id = b.category_id AND b.archived = 0
         ORDER BY c.sort_order, c.name, b.sort_order, b.name`)
 	if err != nil {
-		log.Printf("ERROR: Failed to query boards and categories for homepage: %v", err)
+		app.Logger().Error("Failed to query boards and categories for homepage", "error", err)
 		http.Error(w, "Database error loading homepage.", 500)
 		return
 	}
@@ -211,7 +210,7 @@ func HandleHome(w http.ResponseWriter, r *http.Request, app App) {
 		var boardLocked sql.NullBool
 
 		if err := rows.Scan(&catID, &catName, &boardID, &boardName, &boardDesc, &boardLocked); err != nil {
-			log.Printf("ERROR: Failed to scan homepage board/category row: %v", err)
+			app.Logger().Error("Failed to scan homepage board/category row", "error", err)
 			continue
 		}
 
@@ -230,7 +229,7 @@ func HandleHome(w http.ResponseWriter, r *http.Request, app App) {
 		}
 	}
 	if err := rows.Err(); err != nil {
-		log.Printf("ERROR: Row error scanning homepage data: %v", err)
+		app.Logger().Error("Row error scanning homepage data", "error", err)
 	}
 
 	render(w, r, app, "layout.html", "home.html", map[string]interface{}{
@@ -250,6 +249,7 @@ func HandleAbout(w http.ResponseWriter, r *http.Request, app App) {
 
 // HandleBoard serves a board's index page, showing its threads.
 func HandleBoard(w http.ResponseWriter, r *http.Request, app App, boardConfig *models.BoardConfig) {
+	logger := app.Logger().With("handler", "HandleBoard", "board_id", boardConfig.ID)
 	page, _ := strconv.Atoi(r.URL.Query().Get("p"))
 	if page < 1 {
 		page = 1
@@ -258,14 +258,14 @@ func HandleBoard(w http.ResponseWriter, r *http.Request, app App, boardConfig *m
 
 	threads, err := app.DB().GetThreadsForBoard(boardConfig.ID, false, page, pageSize, true)
 	if err != nil {
-		log.Printf("ERROR: DB error getting threads for /%s/: %v", boardConfig.ID, err)
+		logger.Error("DB error getting threads", "error", err)
 		http.Error(w, "Database error loading board.", 500)
 		return
 	}
 
 	totalThreads, err := app.DB().GetThreadCount(boardConfig.ID, false)
 	if err != nil {
-		log.Printf("ERROR: DB error getting thread count for /%s/: %v", boardConfig.ID, err)
+		logger.Error("DB error getting thread count", "error", err)
 	}
 	totalPages := int(math.Ceil(float64(totalThreads) / float64(pageSize)))
 
@@ -560,7 +560,7 @@ func generatePagination(currentPage, totalPages int) []Page {
 	}
 
 	if end < totalPages {
-		if end < totalPages - 1 {
+		if end < totalPages-1 {
 			pages = append(pages, Page{IsEllipsis: true})
 		}
 		pages = append(pages, Page{Number: totalPages})

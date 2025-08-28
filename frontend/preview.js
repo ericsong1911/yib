@@ -15,15 +15,30 @@ function positionPreview(e) {
 
     const { innerWidth: vw, innerHeight: vh } = window;
     const { width: pw, height: ph } = state.previewDiv.getBoundingClientRect();
-    const margin = 15;
+    const margin = 15; // Space from the edge of the screen
 
     let x = e.clientX + margin;
     let y = e.clientY + margin;
 
-    if (x + pw > vw - margin) x = e.clientX - pw - margin;
-    if (y + ph > vh - margin) y = e.clientY - ph - margin;
-    if (x < margin) x = margin;
-    if (y < margin) y = margin;
+    // If it goes off the right edge, flip it to the left of the cursor.
+    if (x + pw > vw) {
+        x = e.clientX - pw - margin;
+    }
+
+    // If it goes off the bottom edge, flip it to the top of the cursor.
+    if (y + ph > vh) {
+        y = e.clientY - ph - margin;
+    }
+
+    // If it now goes off the left edge (e.g., cursor is far left), clamp it.
+    if (x < 0) {
+        x = margin;
+    }
+
+    // If it now goes off the top edge (e.g., cursor is at the top), clamp it.
+    if (y < 0) {
+        y = margin;
+    }
 
     state.previewDiv.style.left = `${x}px`;
     state.previewDiv.style.top = `${y}px`;

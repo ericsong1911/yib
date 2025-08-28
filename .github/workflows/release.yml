@@ -1,40 +1,60 @@
-# .github/workflows/release.yml
-
 name: Build and Release
 
-# This action runs on every push to a tag that starts with 'v' (e.g., v1.0, v1.2.1)
+# This workflow runs automatically when a new tag starting with 'v' is pushed.
 on:
   push:
     tags:
       - 'v*'
 
-jobs:
-  release:
-    name: Build and Upload Release Binaries
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
+permissions:
+  contents: write
 
+jobs:
+  # Job 1: Run tests and linters first to ensure code quality.
+  test-and-lint:
+    name: Test and Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.0'
+
+      - name: Run Go Tests with FTS5
+        run: go test -tags fts5 -v ./...
+
+      - name: Run Go Linter
+        uses: golangci/golangci-lint-action@v3
+        with:
+          version: v1.55
+
+  # Job 2: Build the binaries for each platform after tests pass.
+  build-binaries:
+    name: Build Binaries
+    needs: test-and-lint
+    runs-on: ubuntu-latest
+    
     strategy:
       matrix:
-        # Define the platforms to build for
         include:
           - os: linux
             arch: amd64
-            archive_format: tar.gz
+            binary_name: "yib"
           - os: linux
             arch: arm64
-            archive_format: tar.gz
+            binary_name: "yib"
           - os: windows
             arch: amd64
-            archive_format: zip
-            extension: .exe
+            binary_name: "yib.exe"
           - os: darwin # macOS
             arch: amd64
-            archive_format: tar.gz
-          - os: darwin # macOS Apple Silicon
+            binary_name: "yib"
+          - os: darwin # macOS
             arch: arm64
-            archive_format: tar.gz
+            binary_name: "yib"
 
     steps:
       - name: Checkout code
@@ -43,50 +63,66 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.18'
+          go-version: '1.21'
 
-      - name: Tidy Go Modules
-        run: go mod tidy
+      - name: Extract Release Version from Tag
+        run: echo "RELEASE_VERSION=${{ github.ref_name }}" >> $GITHUB_ENV
 
-      - name: Build the application
+      - name: Build Go Binary with FTS5
         env:
           GOOS: ${{ matrix.os }}
           GOARCH: ${{ matrix.arch }}
-        run: |
-          echo "Building for ${{ matrix.os }}/${{ matrix.arch }}..."
-          go build -tags="sqlite_fts5" -ldflags="-s -w" -o "yib${{ matrix.extension }}" .
-      
-      - name: Package the release artifacts
-        run: |
-          # Create a directory to hold the packaged release
-          mkdir release_package
-          
-          # Move the compiled binary into the package directory
-          mv "yib${{ matrix.extension }}" release_package/
+        run: go build -tags "sqlite_fts5" -ldflags="-s -w" -o "release_package/${{ matrix.binary_name }}" .
 
-          # Copy over the required assets for the application to run
-          cp -r static release_package/
-          cp -r templates release_package/
+      - name: Prepare Release Package
+        run: |
           cp README.md release_package/
-          
-          # Create the final archive
-          ARCHIVE_NAME="yib-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}"
-          if [ "${{ matrix.archive_format }}" = "zip" ]; then
-            zip -r "${ARCHIVE_NAME}.zip" release_package
-            echo "ASSET_NAME=${ARCHIVE_NAME}.zip" >> $GITHUB_ENV
+          cp LICENSE release_package/
+          if [ "${{ matrix.os }}" == "windows" ]; then
+            cd release_package
+            zip -r "../yib-${{ env.RELEASE_VERSION }}-${{ matrix.os }}-${{ matrix.arch }}.zip" .
           else
-            tar -czf "${ARCHIVE_NAME}.tar.gz" release_package
-            echo "ASSET_NAME=${ARCHIVE_NAME}.tar.gz" >> $GITHUB_ENV
+            cd release_package
+            tar -czf "../yib-${{ env.RELEASE_VERSION }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz" .
           fi
-
-      - name: Create Release and Upload Assets
-        uses: softprops/action-gh-release@v1
+      
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
         with:
-          # This will create a draft release.
+          name: release-asset-${{ matrix.os }}-${{ matrix.arch }}
+          path: yib-*.tar.gz
+
+  # Job 3: Create a single draft release and upload all the built assets.
+  create-release:
+    name: Create Draft Release
+    needs: build-binaries
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all release assets
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - name: Create Draft Release on GitHub
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_name }}
+          release_name: yib ${{ github.ref_name }}
           draft: true
-          # This will use the tag name as the release title and the commit
-          # messages since the last tag as the release body.
-          generate_release_notes: true
-          files: |
-            yib-*.zip
-            yib-*.tar.gz
+          prerelease: false
+
+      - name: Upload Release Assets to GitHub
+        shell: bash
+        run: |
+          for dir in release-assets/*; do
+            for file in "$dir"/*; do
+              echo "Uploading $file..."
+              gh release upload "${{ github.ref_name }}" "$file" --clobber
+            done
+          done
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

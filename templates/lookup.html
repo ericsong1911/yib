@@ -20,7 +20,9 @@
         <td>{{.Content | stripHTML | truncate 100}}</td>
         <td><time class="post-time" datetime="{{.Timestamp | formatISO}}">{{.Timestamp | formatTime}}</time></td>
         <td>
-            <form action="/mod/delete-post" method="post" onsubmit="return confirm('Delete this post?')"><input type="hidden" name="csrf_token" value="{{$.csrfToken}}"><input type="hidden" name="post_id" value="{{.ID}}"><input type="submit" value="Delete"></form>
+            <button type="button" class="js-mod-delete" 
+                data-post-id="{{.ID}}" 
+                data-csrf-token="{{$.csrfToken}}">Delete</button>
         </td>
     </tr>
     {{end}}
@@ -47,7 +49,9 @@
         <td>{{.Content | stripHTML | truncate 100}}</td>
         <td><time class="post-time" datetime="{{.Timestamp | formatISO}}">{{.Timestamp | formatTime}}</time></td>
         <td>
-            <form action="/mod/delete-post" method="post" onsubmit="return confirm('Delete this post?')"><input type="hidden" name="csrf_token" value="{{$.csrfToken}}"><input type="hidden" name="post_id" value="{{.ID}}"><input type="submit" value="Delete"></form>
+            <button type="button" class="js-mod-delete" 
+                data-post-id="{{.ID}}" 
+                data-csrf-token="{{$.csrfToken}}">Delete</button>
         </td>
     </tr>
     {{end}}

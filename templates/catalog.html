@@ -3,7 +3,7 @@
         {{range .Threads}}
         <div class="catalog-item">
             <a href="/{{.BoardID}}/thread/{{.ID}}">
-                <img src="{{.Op.ImagePath | default "/static/placeholder.png"}}" loading="lazy">
+                <img src="{{if .Op.ThumbnailPath.Valid}}{{.Op.ThumbnailPath.String}}{{else}}{{.Op.ImagePath | default "/static/placeholder.png"}}{{end}}" loading="lazy">
             </a>
             <div class="catalog-stats">
                 <b>R:</b> {{.ReplyCount}} / <b>I:</b> {{.ImageCount}}
