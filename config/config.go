@@ -2,7 +2,7 @@
 package config
 
 const (
-	AppVersion   = "0.5-beta-hotfix1"
+	AppVersion   = "0.5-beta-hotfix2"
 	DefaultTheme = "yalie-blue"
 
 	// Form & Post Limits

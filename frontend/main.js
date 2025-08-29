@@ -215,6 +215,28 @@ function handleGlobalMouseOver(e) { if (e.target.classList.contains('backlink'))
 function handleGlobalMouseOut(e) { if (e.target.classList.contains('backlink')) hidePreview(e); }
 
 // --- INITIALIZATION FUNCTIONS ---
+function initFileInputHandler() {
+    const fileInput = document.getElementById('file-input');
+    const clearButton = document.getElementById('file-clear');
+
+    if (!fileInput || !clearButton) {
+        return;
+    }
+
+    fileInput.addEventListener('change', () => {
+        if (fileInput.files.length > 0) {
+            clearButton.style.display = 'inline-block';
+        } else {
+            clearButton.style.display = 'none';
+        }
+    });
+
+    clearButton.addEventListener('click', () => {
+        fileInput.value = null; 
+        fileInput.dispatchEvent(new Event('change'));
+    });
+}
+
 function initAutoRefresh() {
     const checkbox = document.getElementById('auto-refresh-checkbox');
     const intervalInput = document.getElementById('auto-refresh-interval');
@@ -366,6 +388,7 @@ function init() {
     initBoardSelector();
     initNameHistory();
     initAutoRefresh();
+    initFileInputHandler();
 
     // Run logic specific to user-facing pages.
     if (document.body.id !== 'mod-page') {
