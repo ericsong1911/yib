@@ -303,14 +303,27 @@ func HandleModDelete(w http.ResponseWriter, r *http.Request, app App) {
 	}
 	modHash := utils.HashIP(utils.GetIPAddress(r))
 	details := fmt.Sprintf("Deleted post %d", postID)
-	_, _, err = app.DB().DeletePost(postID, app.UploadDir(), modHash, details)
+
+	// Capture the boardID and isOp flag from the database operation.
+	boardID, isOp, err := app.DB().DeletePost(postID, app.UploadDir(), modHash, details)
 	if err != nil {
 		logger.Error("Mod failed to delete post", "post_id", postID, "error", err)
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to delete post."}, app)
 		return
 	}
 	logger.Info("Post deleted by moderator", "post_id", postID)
-	respondJSON(w, http.StatusOK, map[string]string{"success": "Post deleted successfully."}, app)
+
+	var redirectURL string
+	if isOp {
+		// If an OP was deleted, redirect to the board index.
+		redirectURL = "/" + boardID + "/"
+	}
+
+	// If it was a reply, redirectURL will be "" and the frontend will just reload.
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"success":  "Post deleted successfully.",
+		"redirect": redirectURL,
+	}, app)
 }
 
 func HandleBan(w http.ResponseWriter, r *http.Request, app App) {

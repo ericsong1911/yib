@@ -228,8 +228,8 @@ func HandleCookieDelete(w http.ResponseWriter, r *http.Request, app App) {
 	currentUserCookieID := r.Context().Value(UserCookieKey).(string)
 	currentUserCookieHash := utils.HashIP(currentUserCookieID)
 
-	var postCookieHash string
-	if err := app.DB().DB.QueryRow("SELECT cookie_hash FROM posts WHERE id = ?", postID).Scan(&postCookieHash); err != nil {
+	var postCookieHash, boardID string // Capture boardID here
+	if err := app.DB().DB.QueryRow("SELECT cookie_hash, board_id FROM posts WHERE id = ?", postID).Scan(&postCookieHash, &boardID); err != nil {
 		if err == sql.ErrNoRows {
 			respondJSON(w, http.StatusNotFound, map[string]string{"error": "Post not found."}, app)
 			return
@@ -245,14 +245,25 @@ func HandleCookieDelete(w http.ResponseWriter, r *http.Request, app App) {
 		return
 	}
 
-	_, _, err = app.DB().DeletePost(postID, app.UploadDir(), "", "")
+	// Capture the isOp flag from the database operation.
+	_, isOp, err := app.DB().DeletePost(postID, app.UploadDir(), "", "")
 	if err != nil {
 		logger.Error("Failed to delete post by user request", "post_id", postID, "error", err)
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to delete post."}, app)
 		return
 	}
 
-	respondJSON(w, http.StatusOK, map[string]string{"success": "Post deleted successfully."}, app)
+	var redirectURL string
+	if isOp {
+		// If an OP was deleted, redirect to the board index.
+		redirectURL = "/" + boardID + "/"
+	}
+
+	// If it was a reply, redirectURL will be "" and the frontend will just reload.
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"success":  "Post deleted successfully.",
+		"redirect": redirectURL,
+	}, app)
 }
 
 // HandleReport allows a user to report a post for moderation.

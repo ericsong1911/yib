@@ -75,13 +75,22 @@ async function handleModalApiSubmit(modal, url, data, successMessage) {
 
         modal.close();
         Modal.alert('Success', successMessage || result.success);
-        setTimeout(() => window.location.reload(), 1500);
+
+        setTimeout(() => {
+            if (result.redirect && result.redirect !== "") {
+                window.location.assign(result.redirect);
+            } else {
+                window.location.reload();
+            }
+        }, 1200);
+
     } catch (error) {
         modal.close();
         const errorMessage = error.message || 'An unexpected error or invalid server response occurred.';
         Modal.alert('Error', errorMessage);
     }
 }
+
 
 // --- MODAL CREATION FUNCTIONS ---
 function showReportModal(postId) {
@@ -193,7 +202,7 @@ function handleGlobalClick(e) {
     } else if (target.classList.contains('js-board-delete')) {
         e.preventDefault();
         showBoardDeleteModal(target);
-    } else if (target.classList.contains('js-user-delete')) { // NEW
+    } else if (target.classList.contains('js-user-delete')) {
         e.preventDefault();
         showUserDeleteModal(target);
     } else if (target.classList.contains('js-quote-link')) {
