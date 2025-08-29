@@ -17,6 +17,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -118,13 +120,15 @@ jobs:
     name: Create Draft Release
     needs: build-binaries
     runs-on: ubuntu-latest
-
     steps:
+      - name: Checkout code       
+        uses: actions/checkout@v4 
+        
       - name: Download all release assets
         uses: actions/download-artifact@v4
         with:
           path: release-assets
-
+          
       - name: Create Draft Release on GitHub
         id: create_release
         uses: actions/create-release@v1
@@ -135,7 +139,7 @@ jobs:
           release_name: yib ${{ github.ref_name }}
           draft: true
           prerelease: false
-
+          
       - name: Upload Release Assets to GitHub
         shell: bash
         run: |
