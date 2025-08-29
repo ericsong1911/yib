@@ -1,0 +1,10 @@
+# .github/ISSUE_TEMPLATE/config.yml
+
+blank_issues_enabled: false
+contact_links:
+  - name: 🚨 Report a Security Vulnerability
+    url: https://github.com/ericsong1911/yib/blob/main/SECURITY.md
+    about: Please report sensitive security issues privately by following our security policy.
+  - name: 💬 Ask a Question or Start a Discussion
+    url: https://github.com/ericsong1911/yib/discussions
+    about: For questions, help, or general discussion, please use GitHub Discussions.

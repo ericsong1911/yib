@@ -1,0 +1,66 @@
+name: Bug Report
+about: Create a report to help us improve yib
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-flight Checklist
+      description: Please confirm you've completed the following steps before submitting your report.
+      options:
+        - label: I have searched the existing issues to ensure this bug has not been reported yet.
+          required: true
+        - label: I am running the latest version of yib.
+          required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "What version of yib are you running? (e.g., v0.5-beta, or a specific git commit hash)"
+      placeholder: "e.g., v0.5-beta"
+    validations:
+      required: true
+  - type: textarea
+    id: bug-description
+    attributes:
+      label: Describe the Bug
+      description: A clear and concise description of what the bug is.
+      placeholder: "When I try to delete a post from the board view, the page does not refresh."
+    validations:
+      required: true
+  - type: textarea
+    id: steps-to-reproduce
+    attributes:
+      label: Steps to Reproduce
+      description: "How can we reproduce the issue? Please be as specific as possible."
+      placeholder: |
+        1. Go to board '/b/'
+        2. Click on the delete button for post No. '123'
+        3. Confirm the deletion in the modal
+        4. See that the success modal appears, but the post is still visible on the page.
+    validations:
+      required: true
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected Behavior
+      description: A clear and concise description of what you expected to happen.
+      placeholder: "I expected the page to automatically reload after a successful deletion."
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: "Please provide details about the environment where you're running yib."
+      placeholder: |
+        - OS: [e.g., Ubuntu 22.04, Windows 11]
+        - Browser: [e.g., Firefox 125, Chrome 124]
+        - Go Version (if built from source): [e.g., go1.22.1]
+        - Reverse Proxy: [e.g., None, Nginx, Caddy]
+    validations:
+      required: true
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: "Add any other context about the problem here. If applicable, add screenshots or log output to help explain your problem."

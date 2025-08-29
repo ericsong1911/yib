@@ -1,0 +1,38 @@
+name: Feature Request
+about: Suggest an idea or enhancement for yib
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: related-problem
+    attributes:
+      label: Is your feature request related to a problem? Please describe.
+      description: A clear and concise description of what the problem is.
+      placeholder: "I'm always frustrated when I have to manually prune old, expired bans from the ban list."
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Describe the solution you'd like
+      description: A clear and concise description of what you want to happen.
+      placeholder: "I would like a button in the moderation panel, or an automatic background job, that deletes all bans where the expiration date is in the past."
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Describe alternatives you've considered
+      description: A clear and concise description of any alternative solutions or features you've considered.
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: "Add any other context, mockups, or screenshots about the feature request here."
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      description: Are you willing to help implement this feature?
+      options:
+        - label: I am willing to submit a Pull Request to implement this feature.
