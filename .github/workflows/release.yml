@@ -29,13 +29,13 @@ jobs:
           go mod download
 
       - name: Run Go Tests with FTS5
-        run: go test -tags fts5 -v ./...
+        run: go test -tags sqlite_fts5 -v ./...
 
       - name: Run Go Linter
         uses: golangci/golangci-lint-action@v3
         with:
           version: v1.55
-          args: --build-tags=fts5
+          args: --build-tags=sqlite_fts5
 
   # Job 2: Build the binaries for each platform after tests pass.
   build-binaries:
@@ -96,7 +96,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: release-asset-${{ matrix.os }}-${{ matrix.arch }}
-          path: yib-*.tar.gz
+          path: |
+            yib-*.tar.gz
+            yib-*.zip
 
   # Job 3: Create a single draft release and upload all the built assets.
   create-release:
