@@ -135,37 +135,6 @@ function showBanModal(link) {
     ]).show();
 }
 
-function showModDeleteModal(button) {
-    const { postId, csrfToken } = button.dataset;
-    const message = `Are you sure you want to delete post No. ${postId}?`;
-    new Modal('Confirmation Required', `<p>${message}</p>`, [
-        { id: 'modal-cancel', text: 'Cancel' },
-        {
-            id: 'modal-confirm', text: 'Confirm', class: 'button-danger',
-            onClick: (evt, modal) => {
-                const data = { post_id: postId, csrf_token: csrfToken };
-                handleModalApiSubmit(modal, '/mod/delete-post', data, "Post deleted successfully.");
-            }
-        }
-    ]).show();
-}
-
-function showUserDeleteModal(button) {
-    const { postId, csrfToken } = button.dataset;
-    const message = `Are you sure you want to delete your post No. ${postId}?`;
-    new Modal('Confirmation Required', `<p>${message}</p>`, [
-        { id: 'modal-cancel', text: 'Cancel' },
-        {
-            id: 'modal-confirm', text: 'Confirm', class: 'button-danger',
-            onClick: (evt, modal) => {
-                const data = { post_id: postId, csrf_token: csrfToken };
-                // Use the correct /delete endpoint for user deletions.
-                handleModalApiSubmit(modal, '/delete', data, "Post deleted successfully.");
-            }
-        }
-    ]).show();
-}
-
 function showBoardDeleteModal(button) {
     const { boardId, csrfToken } = button.dataset;
     const message = `WARNING: Are you sure you want to permanently delete the board /${boardId}/? This will delete all threads, posts, and images and cannot be undone.`;
@@ -182,6 +151,54 @@ function showBoardDeleteModal(button) {
 }
 
 // --- GLOBAL EVENT LISTENERS ---
+function handlePostDeletion(target) {
+    const postId = target.dataset.postId;
+    const csrfToken = target.dataset.csrfToken;
+    const isModDelete = target.classList.contains('js-mod-delete');
+    const url = isModDelete ? '/mod/delete-post' : '/delete';
+    
+    const confirmMessage = isModDelete 
+        ? `MOD ACTION: Are you sure you want to permanently delete post No. ${postId}?`
+        : `Are you sure you want to delete your post No. ${postId}? This cannot be undone.`;
+
+    const performDelete = async () => {
+        try {
+            const formData = new URLSearchParams({ post_id: postId, csrf_token: csrfToken });
+            const response = await fetch(url, { method: 'POST', body: formData });
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || 'An unknown error occurred.');
+            }
+
+            if (result.redirect) {
+                window.location.assign(result.redirect);
+            } else {
+                window.location.reload();
+            }
+        } catch (error) {
+            Modal.alert('Deletion Error', error.message);
+        }
+    };
+
+    new Modal('Confirm Deletion', `<p>${confirmMessage}</p>`, [
+        {
+            id: 'delete-cancel',
+            text: 'Cancel',
+            class: 'button-secondary'
+        },
+        {
+            id: 'delete-confirm',
+            text: 'Delete',
+            class: 'button-danger',
+            onClick: (e, modal) => {
+                modal.close();
+                performDelete();
+            }
+        }
+    ]).show();
+}
+
 function handleGlobalClick(e) {
     const target = e.target;
     if (target.classList.contains('postImg') && target.closest('a')) {
@@ -196,15 +213,12 @@ function handleGlobalClick(e) {
     } else if (target.classList.contains('ban-link')) {
         e.preventDefault();
         showBanModal(target);
-    } else if (target.classList.contains('js-mod-delete')) {
+    } else if (target.classList.contains('js-user-delete') || target.classList.contains('js-mod-delete')) {
         e.preventDefault();
-        showModDeleteModal(target);
+        handlePostDeletion(target);
     } else if (target.classList.contains('js-board-delete')) {
         e.preventDefault();
         showBoardDeleteModal(target);
-    } else if (target.classList.contains('js-user-delete')) {
-        e.preventDefault();
-        showUserDeleteModal(target);
     } else if (target.classList.contains('js-quote-link')) {
         e.preventDefault();
         quote(target.dataset.postId);

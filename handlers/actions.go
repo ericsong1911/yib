@@ -450,7 +450,7 @@ func archiveOldThreads(app App, boardID string) {
 		return
 	}
 	var threadCount int
-	err = app.DB().DB.QueryRow("SELECT COUNT(*) FROM threads WHERE board_id = ? AND archived = 0", boardID).Scan(&threadCount)
+	err = app.DB().DB.QueryRow("SELECT COUNT(*) FROM threads WHERE board_id = ? AND archived = 0 AND sticky = 0", boardID).Scan(&threadCount)
 	if err != nil {
 		logger.Error("Archiver failed to get thread count", "error", err)
 		return
