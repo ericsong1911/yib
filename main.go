@@ -40,14 +40,14 @@ type Application struct {
 func (a *Application) DB() *database.DatabaseService      { return a.db }
 func (a *Application) RateLimiter() *models.RateLimiter   { return a.rateLimiter }
 func (a *Application) Challenges() *models.ChallengeStore { return a.challenges }
-func (a *Application) Logger() *slog.Logger               { return a.logger } // NEW-FEATURE
+func (a *Application) Logger() *slog.Logger               { return a.logger }
 func (a *Application) UploadDir() string                  { return a.uploadDir }
 func (a *Application) BannerFile() string                 { return a.bannerFile }
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
-	mrand.Seed(time.Now().UnixNano())
+	mrand.New(mrand.NewSource(time.Now().UnixNano()))
 	saltBytes := make([]byte, 32)
 	if _, err := rand.Read(saltBytes); err != nil {
 		logger.Error("Failed to generate IP salt", "error", err)
@@ -69,7 +69,10 @@ func main() {
 		backupDir = "./backups"
 	}
 	utils.BackupDir = backupDir // Set global backup directory
-	os.MkdirAll(utils.BackupDir, 0755)
+	if err := os.MkdirAll(utils.BackupDir, 0755); err != nil {
+		logger.Error("FATAL: Could not create backup directory", "path", utils.BackupDir, "error", err)
+		os.Exit(1)
+	}
 
 	rateLimitEvery, err := time.ParseDuration(utils.GetEnv("YIB_RATE_EVERY", config.DefaultRateLimitEvery))
 	if err != nil {
@@ -97,13 +100,20 @@ func main() {
 		logger.Error("Failed to initialize database", "error", err)
 		os.Exit(1)
 	}
-	defer dbService.DB.Close()
+	defer func() {
+		if err := dbService.DB.Close(); err != nil {
+			logger.Error("Failed to close database", "error", err)
+		}
+	}()
 
 	if err := handlers.LoadTemplates(); err != nil {
 		logger.Error("Failed to load templates", "error", err)
 		os.Exit(1)
 	}
-	os.MkdirAll("./uploads", 0755)
+	if err := os.MkdirAll("./uploads", 0755); err != nil {
+		logger.Error("FATAL: Could not create uploads directory", "error", err)
+		os.Exit(1)
+	}
 	utils.CreatePlaceholderImage(logger)
 
 	app := &Application{

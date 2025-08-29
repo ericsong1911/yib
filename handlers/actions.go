@@ -119,7 +119,11 @@ func HandlePost(w http.ResponseWriter, r *http.Request, app App) {
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Database error."}, app)
 		return
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rerr := tx.Rollback(); rerr != nil && rerr != sql.ErrTxDone {
+			logger.Error("Failed to rollback transaction in HandlePost", "error", rerr)
+		}
+	}()
 
 	var newPostID int64
 	var redirectURL string
@@ -294,7 +298,11 @@ func processImage(r *http.Request, app App, logger *slog.Logger) (string, sql.Nu
 		}
 		return "", sql.NullString{}, "", false, fmt.Errorf("could not get form file: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			logger.Error("Failed to close upload file", "error", err)
+		}
+	}()
 
 	limitedReader := &io.LimitedReader{R: file, N: config.MaxFileSize + 1}
 	data, err := io.ReadAll(limitedReader)
@@ -361,7 +369,11 @@ func processImage(r *http.Request, app App, logger *slog.Logger) (string, sql.Nu
 	if err != nil {
 		return "", sql.NullString{}, "", true, fmt.Errorf("could not create main image file: %w", err)
 	}
-	defer out.Close()
+	defer func() {
+		if err := out.Close(); err != nil {
+			logger.Error("Failed to close main image file", "path", mainOutputPath, "error", err)
+		}
+	}()
 
 	// Encode and save the main image
 	if outputFormat == "png" {
@@ -370,7 +382,9 @@ func processImage(r *http.Request, app App, logger *slog.Logger) (string, sql.Nu
 		err = imaging.Encode(out, img, imaging.JPEG, imaging.JPEGQuality(90))
 	}
 	if err != nil {
-		os.Remove(mainOutputPath)
+		if removeErr := os.Remove(mainOutputPath); removeErr != nil {
+			logger.Error("Failed to remove failed main image file", "path", mainOutputPath, "error", removeErr)
+		}
 		return "", sql.NullString{}, "", true, fmt.Errorf("failed to encode main image: %w", err)
 	}
 	mainPath := "/uploads/" + mainFilename
@@ -385,11 +399,18 @@ func processImage(r *http.Request, app App, logger *slog.Logger) (string, sql.Nu
 		// Don't fail the entire post if thumbnailing fails, just proceed without it.
 		return mainPath, sql.NullString{}, hashStr, true, nil
 	}
-	defer thumbOut.Close()
+	defer func() {
+		if err := thumbOut.Close(); err != nil {
+			logger.Error("Failed to close thumbnail file", "path", thumbOutputPath, "error", err)
+		}
+	}()
 
 	if err := imaging.Encode(thumbOut, thumb, imaging.JPEG, imaging.JPEGQuality(85)); err != nil {
 		logger.Error("Failed to encode thumbnail", "error", err)
-		os.Remove(thumbOutputPath) // cleanup failed file
+		// cleanup failed file
+		if removeErr := os.Remove(thumbOutputPath); removeErr != nil {
+			logger.Error("Failed to remove failed thumbnail file", "path", thumbOutputPath, "error", removeErr)
+		}
 		return mainPath, sql.NullString{}, hashStr, true, nil
 	}
 	thumbPath := sql.NullString{String: "/uploads/" + thumbFilename, Valid: true}
@@ -432,7 +453,11 @@ func archiveOldThreads(app App, boardID string) {
 		logger.Error("Archiver failed to find threads to archive", "error", err)
 		return
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			logger.Error("Archiver failed to close rows", "error", err)
+		}
+	}()
 
 	var threadIDs []interface{}
 	for rows.Next() {

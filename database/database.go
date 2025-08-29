@@ -37,7 +37,7 @@ func InitDB(dataSourceName string, logger *slog.Logger) (*DatabaseService, error
 		return nil, fmt.Errorf("failed to execute base schema: %w", err)
 	}
 
-	// NEW-FEATURE: Run versioned migrations
+	// Run versioned migrations
 	if err := runMigrations(db, logger); err != nil {
 		return nil, fmt.Errorf("database migration failed: %w", err)
 	}
@@ -99,7 +99,10 @@ func (ds *DatabaseService) BackupDatabase() (string, error) {
 
 	_, err := ds.DB.Exec("VACUUM INTO ?", backupPath)
 	if err != nil {
-		os.Remove(backupPath)
+		// If backup fails, attempt to remove the potentially incomplete file
+		if removeErr := os.Remove(backupPath); removeErr != nil && !os.IsNotExist(removeErr) {
+			ds.logger.Error("Failed to remove incomplete backup file", "path", backupPath, "error", removeErr)
+		}
 		return "", fmt.Errorf("VACUUM INTO command failed: %w", err)
 	}
 
@@ -125,11 +128,15 @@ func runMigrations(db *sql.DB, logger *slog.Logger) error {
 			}
 
 			if _, err := tx.Exec(m.Query); err != nil {
-				tx.Rollback()
+				if rerr := tx.Rollback(); rerr != nil {
+					logger.Error("Failed to rollback migration", "version", m.Version, "error", rerr)
+				}
 				return fmt.Errorf("failed to apply migration v%d: %w", m.Version, err)
 			}
 			if _, err := tx.Exec("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)", m.Version, utils.GetSQLTime()); err != nil {
-				tx.Rollback()
+				if rerr := tx.Rollback(); rerr != nil {
+					logger.Error("Failed to rollback migration record", "version", m.Version, "error", rerr)
+				}
 				return fmt.Errorf("failed to record migration v%d: %w", m.Version, err)
 			}
 
@@ -195,7 +202,11 @@ func (ds *DatabaseService) GetThreadsForBoard(boardID string, archived bool, pag
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			ds.logger.Error("Failed to close rows in GetThreadsForBoard", "error", err)
+		}
+	}()
 
 	var threads []models.Thread
 	for rows.Next() {
@@ -251,7 +262,11 @@ func (ds *DatabaseService) GetPostsForThread(threadID int64) ([]models.Post, err
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			ds.logger.Error("Failed to close rows in GetPostsForThread", "error", err)
+		}
+	}()
 
 	var posts []models.Post
 	for rows.Next() {
@@ -510,7 +525,11 @@ func (ds *DatabaseService) SearchPosts(query, boardID string) ([]models.Post, er
 		ds.logger.Error("FTS Search failed", "error", err)
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			ds.logger.Error("Failed to close rows in SearchPosts", "error", err)
+		}
+	}()
 
 	for rows.Next() {
 		var p models.Post
@@ -532,7 +551,11 @@ func LogModAction(tx *sql.Tx, modHash, action string, targetID int64, details st
 	if err != nil {
 		return fmt.Errorf("failed to prepare mod action statement: %w", err)
 	}
-	defer stmt.Close()
+	defer func() {
+		if err := stmt.Close(); err != nil {
+			slog.Default().Error("Failed to close statement in LogModAction", "error", err)
+		}
+	}()
 
 	_, err = stmt.Exec(utils.GetSQLTime(), modHash, action, targetID, details)
 	if err != nil {

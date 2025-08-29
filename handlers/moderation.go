@@ -29,7 +29,11 @@ func HandleModeration(w http.ResponseWriter, r *http.Request, app App) {
 	if err != nil {
 		logger.Error("Failed to query for active reports", "error", err)
 	} else {
-		defer rows.Close()
+		defer func() {
+			if err := rows.Close(); err != nil {
+				logger.Error("Failed to close report rows in HandleModeration", "error", err)
+			}
+		}()
 		for rows.Next() {
 			var rep models.Report
 			if err := rows.Scan(&rep.ID, &rep.Reason, &rep.IPHash, &rep.CreatedAt, &rep.Post.ID, &rep.Post.BoardID, &rep.Post.ThreadID); err != nil {
@@ -48,7 +52,11 @@ func HandleModeration(w http.ResponseWriter, r *http.Request, app App) {
 	if err != nil {
 		logger.Error("Failed to query for recent posts", "error", err)
 	} else {
-		defer rows.Close()
+		defer func() {
+			if err := rows.Close(); err != nil {
+				logger.Error("Failed to close recent post rows in HandleModeration", "error", err)
+			}
+		}()
 		for rows.Next() {
 			var p models.Post
 			if err := rows.Scan(&p.ID, &p.BoardID, &p.ThreadID, &p.Name, &p.Tripcode, &p.Content, &p.Timestamp, &p.IPHash, &p.CookieHash); err != nil {
@@ -73,7 +81,11 @@ func HandleModeration(w http.ResponseWriter, r *http.Request, app App) {
 	if err != nil {
 		logger.Error("Failed to query categories for mod panel", "error", err)
 	} else {
-		defer catRows.Close()
+		defer func() {
+			if err := catRows.Close(); err != nil {
+				logger.Error("Failed to close category rows in HandleModeration", "error", err)
+			}
+		}()
 		for catRows.Next() {
 			var cat models.Category
 			if err := catRows.Scan(&cat.ID, &cat.Name, &cat.SortOrder); err != nil {
@@ -94,7 +106,11 @@ func HandleModeration(w http.ResponseWriter, r *http.Request, app App) {
 	if err != nil {
 		logger.Error("Failed to query boards for mod panel", "error", err)
 	} else {
-		defer boardRows.Close()
+		defer func() {
+			if err := boardRows.Close(); err != nil {
+				logger.Error("Failed to close board rows in HandleModeration", "error", err)
+			}
+		}()
 		for boardRows.Next() {
 			var board ManagedBoard
 			if err := boardRows.Scan(&board.ID, &board.Name, &board.RequirePass, &board.CategoryID, &board.SortOrder, &board.ThreadCount); err != nil {
@@ -137,7 +153,11 @@ func HandleEditBoard(w http.ResponseWriter, r *http.Request, app App) {
 			http.Error(w, "Database error", http.StatusInternalServerError)
 			return
 		}
-		defer tx.Rollback()
+		defer func() {
+			if rerr := tx.Rollback(); rerr != nil && rerr != sql.ErrTxDone {
+				logger.Error("Failed to rollback transaction in HandleEditBoard", "error", rerr)
+			}
+		}()
 
 		if password != "" {
 			hashedPass, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
@@ -221,7 +241,11 @@ func HandleManageCategories(w http.ResponseWriter, r *http.Request, app App) {
 		http.Error(w, "Database error", http.StatusInternalServerError)
 		return
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rerr := tx.Rollback(); rerr != nil && rerr != sql.ErrTxDone {
+			logger.Error("Failed to rollback transaction in HandleManageCategories", "error", rerr)
+		}
+	}()
 	for key, values := range r.Form {
 		if strings.HasPrefix(key, "name-") {
 			idStr := strings.TrimPrefix(key, "name-")
@@ -315,7 +339,11 @@ func HandleBan(w http.ResponseWriter, r *http.Request, app App) {
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Database error"}, app)
 		return
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rerr := tx.Rollback(); rerr != nil && rerr != sql.ErrTxDone {
+			logger.Error("Failed to rollback transaction in HandleBan", "error", rerr)
+		}
+	}()
 	if ipHash != "" {
 		_, err := tx.Exec(`INSERT INTO bans (hash, ban_type, reason, created_at, expires_at) VALUES (?, 'ip', ?, ?, ?) ON CONFLICT(hash, ban_type) DO UPDATE SET reason=excluded.reason, expires_at=excluded.expires_at`,
 			ipHash, reason, utils.GetSQLTime(), expiresAt)
@@ -363,7 +391,11 @@ func HandleToggleSticky(w http.ResponseWriter, r *http.Request, app App) {
 		http.Error(w, "Database error", http.StatusInternalServerError)
 		return
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rerr := tx.Rollback(); rerr != nil && rerr != sql.ErrTxDone {
+			logger.Error("Failed to rollback transaction in HandleToggleSticky", "error", rerr)
+		}
+	}()
 	if _, err := tx.Exec("UPDATE threads SET sticky = NOT sticky WHERE id = ?", threadID); err != nil {
 		logger.Error("Failed to toggle sticky", "thread_id", threadID, "error", err)
 		http.Error(w, "Database error", http.StatusInternalServerError)
@@ -392,7 +424,11 @@ func HandleToggleLock(w http.ResponseWriter, r *http.Request, app App) {
 		http.Error(w, "Database error", http.StatusInternalServerError)
 		return
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rerr := tx.Rollback(); rerr != nil && rerr != sql.ErrTxDone {
+			logger.Error("Failed to rollback transaction in HandleToggleLock", "error", rerr)
+		}
+	}()
 	if _, err := tx.Exec("UPDATE threads SET locked = NOT locked WHERE id = ?", threadID); err != nil {
 		logger.Error("Failed to toggle lock", "thread_id", threadID, "error", err)
 		http.Error(w, "Database error", http.StatusInternalServerError)
@@ -418,7 +454,11 @@ func HandleBanList(w http.ResponseWriter, r *http.Request, app App) {
 	if err != nil {
 		logger.Error("Failed to query active ban list", "error", err)
 	} else {
-		defer activeRows.Close()
+		defer func() {
+			if err := activeRows.Close(); err != nil {
+				logger.Error("Failed to close active ban rows in HandleBanList", "error", err)
+			}
+		}()
 		for activeRows.Next() {
 			var ban models.Ban
 			if err := activeRows.Scan(&ban.ID, &ban.Hash, &ban.BanType, &ban.Reason, &ban.CreatedAt, &ban.ExpiresAt); err != nil {
@@ -435,7 +475,11 @@ func HandleBanList(w http.ResponseWriter, r *http.Request, app App) {
 	if err != nil {
 		logger.Error("Failed to query expired ban list", "error", err)
 	} else {
-		defer expiredRows.Close()
+		defer func() {
+			if err := expiredRows.Close(); err != nil {
+				logger.Error("Failed to close expired ban rows in HandleBanList", "error", err)
+			}
+		}()
 		for expiredRows.Next() {
 			var ban models.Ban
 			if err := expiredRows.Scan(&ban.ID, &ban.Hash, &ban.BanType, &ban.Reason, &ban.CreatedAt, &ban.ExpiresAt); err != nil {
@@ -467,7 +511,11 @@ func HandleRemoveBan(w http.ResponseWriter, r *http.Request, app App) {
 		http.Error(w, "Database error", http.StatusInternalServerError)
 		return
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rerr := tx.Rollback(); rerr != nil && rerr != sql.ErrTxDone {
+			logger.Error("Failed to rollback transaction in HandleRemoveBan", "error", rerr)
+		}
+	}()
 	if _, err := tx.Exec("DELETE FROM bans WHERE id = ?", banID); err != nil {
 		logger.Error("Failed to remove ban", "ban_id", banID, "error", err)
 		http.Error(w, "Database error", http.StatusInternalServerError)
@@ -493,7 +541,11 @@ func HandleIPLookup(w http.ResponseWriter, r *http.Request, app App) {
 	if err != nil {
 		logger.Error("Failed to look up posts for IP hash", "ip_hash", ipHash, "error", err)
 	} else {
-		defer rows.Close()
+		defer func() {
+			if err := rows.Close(); err != nil {
+				logger.Error("Failed to close rows in HandleIPLookup", "error", err)
+			}
+		}()
 		for rows.Next() {
 			var p models.Post
 			if err := rows.Scan(&p.ID, &p.BoardID, &p.ThreadID, &p.Name, &p.Tripcode, &p.Content, &p.Timestamp, &p.IPHash, &p.CookieHash); err != nil {
@@ -517,7 +569,11 @@ func HandleCookieLookup(w http.ResponseWriter, r *http.Request, app App) {
 	if err != nil {
 		logger.Error("Failed to look up posts for cookie hash", "cookie_hash", cookieHash, "error", err)
 	} else {
-		defer rows.Close()
+		defer func() {
+			if err := rows.Close(); err != nil {
+				logger.Error("Failed to close rows in HandleCookieLookup", "error", err)
+			}
+		}()
 		for rows.Next() {
 			var p models.Post
 			if err := rows.Scan(&p.ID, &p.BoardID, &p.ThreadID, &p.Name, &p.Tripcode, &p.Content, &p.Timestamp, &p.IPHash, &p.CookieHash); err != nil {
@@ -534,6 +590,7 @@ func HandleCookieLookup(w http.ResponseWriter, r *http.Request, app App) {
 }
 
 func HandleUnifiedLookup(w http.ResponseWriter, r *http.Request, app App) {
+	logger := app.Logger().With("handler", "HandleUnifiedLookup")
 	ipHash := r.URL.Query().Get("ip_hash")
 	cookieHash := r.URL.Query().Get("cookie_hash")
 	type LookupResult struct {
@@ -545,7 +602,11 @@ func HandleUnifiedLookup(w http.ResponseWriter, r *http.Request, app App) {
 		var posts []models.Post
 		rows, err := app.DB().DB.Query("SELECT id, board_id, thread_id, name, tripcode, content, timestamp, ip_hash, cookie_hash FROM posts WHERE ip_hash = ? ORDER BY id DESC", ipHash)
 		if err == nil {
-			defer rows.Close()
+			defer func() {
+				if err := rows.Close(); err != nil {
+					logger.Error("Failed to close IP lookup rows in HandleUnifiedLookup", "error", err)
+				}
+			}()
 			for rows.Next() {
 				var p models.Post
 				if err := rows.Scan(&p.ID, &p.BoardID, &p.ThreadID, &p.Name, &p.Tripcode, &p.Content, &p.Timestamp, &p.IPHash, &p.CookieHash); err == nil {
@@ -559,7 +620,11 @@ func HandleUnifiedLookup(w http.ResponseWriter, r *http.Request, app App) {
 		var posts []models.Post
 		rows, err := app.DB().DB.Query("SELECT id, board_id, thread_id, name, tripcode, content, timestamp, ip_hash, cookie_hash FROM posts WHERE cookie_hash = ? ORDER BY id DESC", cookieHash)
 		if err == nil {
-			defer rows.Close()
+			defer func() {
+				if err := rows.Close(); err != nil {
+					logger.Error("Failed to close cookie lookup rows in HandleUnifiedLookup", "error", err)
+				}
+			}()
 			for rows.Next() {
 				var p models.Post
 				if err := rows.Scan(&p.ID, &p.BoardID, &p.ThreadID, &p.Name, &p.Tripcode, &p.Content, &p.Timestamp, &p.IPHash, &p.CookieHash); err == nil {
@@ -589,7 +654,11 @@ func HandleResolveReport(w http.ResponseWriter, r *http.Request, app App) {
 		http.Error(w, "Database error", http.StatusInternalServerError)
 		return
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rerr := tx.Rollback(); rerr != nil && rerr != sql.ErrTxDone {
+			logger.Error("Failed to rollback transaction in HandleResolveReport", "error", rerr)
+		}
+	}()
 	if _, err := tx.Exec("UPDATE reports SET resolved = 1 WHERE id = ?", reportID); err != nil {
 		logger.Error("Failed to resolve report", "report_id", reportID, "error", err)
 		http.Error(w, "Database error", http.StatusInternalServerError)
@@ -642,7 +711,11 @@ func HandleCreateBoard(w http.ResponseWriter, r *http.Request, app App) {
 		http.Error(w, "Database error", http.StatusInternalServerError)
 		return
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rerr := tx.Rollback(); rerr != nil && rerr != sql.ErrTxDone {
+			logger.Error("Failed to rollback transaction in HandleCreateBoard", "error", rerr)
+		}
+	}()
 	_, err = tx.Exec(`INSERT INTO boards (id, name, description, max_threads, bump_limit, image_required, color_scheme, created, category_id, password, require_pass) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		id, name, description, maxThreads, bumpLimit, imageRequired, colorScheme, utils.GetSQLTime(), categoryID, hashedPass, requirePass)
 	if err != nil {
@@ -666,6 +739,7 @@ func HandleCreateBoard(w http.ResponseWriter, r *http.Request, app App) {
 }
 
 func HandleModLog(w http.ResponseWriter, r *http.Request, app App) {
+	logger := app.Logger().With("handler", "HandleModLog")
 	page, _ := strconv.Atoi(r.URL.Query().Get("p"))
 	if page < 1 {
 		page = 1
@@ -673,13 +747,21 @@ func HandleModLog(w http.ResponseWriter, r *http.Request, app App) {
 	pageSize := 50
 	offset := (page - 1) * pageSize
 	var totalLogs int
-	app.DB().DB.QueryRow("SELECT COUNT(*) FROM mod_actions").Scan(&totalLogs)
+	if err := app.DB().DB.QueryRow("SELECT COUNT(*) FROM mod_actions").Scan(&totalLogs); err != nil {
+		logger.Error("Failed to get total mod log count", "error", err)
+		http.Error(w, "Failed to retrieve log count.", http.StatusInternalServerError)
+		return
+	}
 	rows, err := app.DB().DB.Query("SELECT id, timestamp, moderator_hash, action, target_id, details FROM mod_actions ORDER BY timestamp DESC LIMIT ? OFFSET ?", pageSize, offset)
 	if err != nil {
 		http.Error(w, "Failed to retrieve log.", http.StatusInternalServerError)
 		return
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			logger.Error("Failed to close rows in HandleModLog", "error", err)
+		}
+	}()
 	var logs []models.ModAction
 	for rows.Next() {
 		var log models.ModAction
@@ -696,6 +778,7 @@ func HandleModLog(w http.ResponseWriter, r *http.Request, app App) {
 }
 
 func HandleBanner(w http.ResponseWriter, r *http.Request, app App) {
+	logger := app.Logger().With("handler", "HandleBanner")
 	if r.Method == http.MethodPost {
 		content := r.FormValue("banner_content")
 		if err := utils.WriteBanner(app.BannerFile(), content); err != nil {
@@ -707,7 +790,11 @@ func HandleBanner(w http.ResponseWriter, r *http.Request, app App) {
 			http.Error(w, "Database error", http.StatusInternalServerError)
 			return
 		}
-		defer tx.Rollback()
+		defer func() {
+			if rerr := tx.Rollback(); rerr != nil && rerr != sql.ErrTxDone {
+				logger.Error("Failed to rollback transaction in HandleBanner", "error", rerr)
+			}
+		}()
 		if err := database.LogModAction(tx, utils.HashIP(utils.GetIPAddress(r)), "update_banner", 0, content); err != nil {
 			http.Error(w, "Database error", http.StatusInternalServerError)
 			return
@@ -740,7 +827,11 @@ func HandleDatabaseBackup(w http.ResponseWriter, r *http.Request, app App) {
 		http.Error(w, "Database error logging action", http.StatusInternalServerError)
 		return
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rerr := tx.Rollback(); rerr != nil && rerr != sql.ErrTxDone {
+			logger.Error("Failed to rollback transaction in HandleDatabaseBackup", "error", rerr)
+		}
+	}()
 	if err := database.LogModAction(tx, utils.HashIP(utils.GetIPAddress(r)), "database_backup", 0, backupPath); err != nil {
 		http.Error(w, "Database error logging action", http.StatusInternalServerError)
 		return

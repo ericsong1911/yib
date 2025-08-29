@@ -3,6 +3,7 @@ package utils
 
 import (
 	"encoding/base64"
+	"log"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -31,7 +32,10 @@ func CreatePlaceholderImage(logger *slog.Logger) {
 		logger.Error("Error decoding placeholder image", "error", err)
 		return
 	}
-	os.MkdirAll("./static", 0755)
+	if err := os.MkdirAll("./static", 0755); err != nil {
+		logger.Error("Error creating static directory for placeholder", "error", err)
+		return
+	}
 	err = os.WriteFile(placeholderPath, data, 0666)
 	if err != nil {
 		logger.Error("Error writing placeholder image", "error", err)
@@ -65,7 +69,7 @@ func WriteBanner(bannerFile, content string) error {
 	}
 	err := os.WriteFile(bannerFile, []byte(content), 0644)
 	if err != nil {
-		// log.Printf("ERROR: Could not write to banner file %s: %v", bannerFile, err)
+		log.Printf("ERROR: Could not write to banner file %s: %v", bannerFile, err)
 	}
 	return err
 }

@@ -59,7 +59,11 @@ func getBoardList(app App) []models.NavBoardEntry {
 		app.Logger().Error("Failed to query board list for global dropdown", "error", err)
 		return nil
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			app.Logger().Error("Failed to close rows in getBoardList", "error", err)
+		}
+	}()
 
 	var boards []models.NavBoardEntry
 	for rows.Next() {
@@ -89,12 +93,16 @@ func respondJSON(w http.ResponseWriter, status int, payload interface{}, app App
 	if err != nil {
 		app.Logger().Error("Failed to marshal JSON payload", "error", err)
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{"error":"Failed to marshal JSON response"}`))
+		if _, werr := w.Write([]byte(`{"error":"Failed to marshal JSON response"}`)); werr != nil {
+			app.Logger().Error("Failed to write internal server error response", "error", werr)
+		}
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	w.Write(response)
+	if _, err := w.Write(response); err != nil {
+		app.Logger().Error("Failed to write JSON response", "error", err)
+	}
 }
 
 // MakeHandler now accepts our generic App interface.
@@ -198,7 +206,11 @@ func HandleHome(w http.ResponseWriter, r *http.Request, app App) {
 		http.Error(w, "Database error loading homepage.", 500)
 		return
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			app.Logger().Error("Failed to close rows in HandleHome", "error", err)
+		}
+	}()
 
 	categoryMap := make(map[int]*models.Category)
 	var categories []*models.Category
@@ -448,7 +460,11 @@ func HandleSearch(w http.ResponseWriter, r *http.Request, app App) {
 	type BoardEntry struct{ ID, Name string }
 	var boards []BoardEntry
 	if rows != nil {
-		defer rows.Close()
+		defer func() {
+			if err := rows.Close(); err != nil {
+				app.Logger().Error("Failed to close rows in HandleSearch", "error", err)
+			}
+		}()
 		for rows.Next() {
 			var be BoardEntry
 			if err := rows.Scan(&be.ID, &be.Name); err != nil {
