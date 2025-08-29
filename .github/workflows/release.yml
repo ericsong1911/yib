@@ -99,6 +99,8 @@ jobs:
         run: |
           cp README.md release_package/
           cp LICENSE release_package/
+          cp -r static release_package/
+          cp -r templates release_package/
           if [ "${{ matrix.os }}" == "windows" ]; then
             cd release_package
             zip -r "../yib-${{ env.RELEASE_VERSION }}-${{ matrix.os }}-${{ matrix.arch }}.zip" .
