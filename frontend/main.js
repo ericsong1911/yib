@@ -141,6 +141,22 @@ function showModDeleteModal(button) {
     ]).show();
 }
 
+function showUserDeleteModal(button) {
+    const { postId, csrfToken } = button.dataset;
+    const message = `Are you sure you want to delete your post No. ${postId}?`;
+    new Modal('Confirmation Required', `<p>${message}</p>`, [
+        { id: 'modal-cancel', text: 'Cancel' },
+        {
+            id: 'modal-confirm', text: 'Confirm', class: 'button-danger',
+            onClick: (evt, modal) => {
+                const data = { post_id: postId, csrf_token: csrfToken };
+                // Use the correct /delete endpoint for user deletions.
+                handleModalApiSubmit(modal, '/delete', data, "Post deleted successfully.");
+            }
+        }
+    ]).show();
+}
+
 function showBoardDeleteModal(button) {
     const { boardId, csrfToken } = button.dataset;
     const message = `WARNING: Are you sure you want to permanently delete the board /${boardId}/? This will delete all threads, posts, and images and cannot be undone.`;
@@ -177,6 +193,9 @@ function handleGlobalClick(e) {
     } else if (target.classList.contains('js-board-delete')) {
         e.preventDefault();
         showBoardDeleteModal(target);
+    } else if (target.classList.contains('js-user-delete')) { // NEW
+        e.preventDefault();
+        showUserDeleteModal(target);
     } else if (target.classList.contains('js-quote-link')) {
         e.preventDefault();
         quote(target.dataset.postId);

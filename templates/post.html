@@ -32,11 +32,9 @@
             [<a href="#" class="report-link post-action-link" data-post-id="{{.Post.ID}}">Report</a>]
 
             {{if and .CurrentUserCookieHash (eq .CurrentUserCookieHash .Post.CookieHash)}}
-            [<form action="/delete" method="post" class="js-confirm-form post-action-form" data-confirm-message="Are you sure you want to delete your post No. {{.Post.ID}}?">
-                <input type="hidden" name="csrf_token" value="{{.csrfToken}}">
-                <input type="hidden" name="post_id" value="{{.Post.ID}}">
-                <input type="submit" value="Delete" class="user-delete-button post-action-link">
-            </form>]
+            [<button type="button" class="js-user-delete user-delete-button post-action-link"
+                    data-post-id="{{.Post.ID}}"
+                    data-csrf-token="{{.csrfToken}}">Delete</button>]
             {{end}}
 
         </span>
