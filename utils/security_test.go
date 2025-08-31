@@ -27,9 +27,8 @@ func TestGenerateTripcode(t *testing.T) {
 			expectedTrip: "!t3e7Tz8pDP",
 		},
 		{
-			name:  "Empty Name with Tripcode",
-			input: "#password",
-			// CORRECTED HASH
+			name:         "Empty Name with Tripcode",
+			input:        "#password",
 			expectedTrip: "!t3e7Tz8pDP",
 		},
 		{
