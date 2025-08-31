@@ -489,7 +489,7 @@ func HandleSearch(w http.ResponseWriter, r *http.Request, app App) {
 }
 
 // handleBoardLogin serves the password prompt for protected boards.
-func handleBoardLogin(w http.ResponseWriter, r *http.Request, app App, boardConfig *models.BoardConfig) {
+func handleBoardLogin(w http.ResponseWriter, r *http.Request, _ App, boardConfig *models.BoardConfig) {
 	loginError := false
 	if r.Method == http.MethodPost {
 		password := r.FormValue("password")

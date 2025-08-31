@@ -1,5 +1,3 @@
-// yib/handlers/actions_test.go
-
 //go:build fts5
 
 package handlers
@@ -9,209 +7,215 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"io"
-	"log/slog"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
-	"time"
-	"yib/database"
 	"yib/models"
 	"yib/utils"
 )
 
-// MockApplication holds dependencies for handler tests.
-type MockApplication struct {
-	db          *database.DatabaseService
-	rateLimiter *models.RateLimiter
-	challenges  *models.ChallengeStore
-	uploadDir   string
-	logger      *slog.Logger
-}
-
-func (a *MockApplication) DB() *database.DatabaseService      { return a.db }
-func (a *MockApplication) RateLimiter() *models.RateLimiter   { return a.rateLimiter }
-func (a *MockApplication) Challenges() *models.ChallengeStore { return a.challenges }
-func (a *MockApplication) Logger() *slog.Logger               { return a.logger }
-func (a *MockApplication) UploadDir() string                  { return a.uploadDir }
-func (a *MockApplication) BannerFile() string                 { return "./banner.txt" }
-
-// setupTestApp creates a full application stack with a test database for integration testing.
-func setupTestApp(t *testing.T) (*MockApplication, func()) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-	dbDir, err := os.MkdirTemp("", "yib_test_db")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir for test DB: %v", err)
-	}
-	dbPath := filepath.Join(dbDir, "test.db?_journal_mode=WAL&_foreign_keys=on")
-	dbService, err := database.InitDB(dbPath, logger)
-	if err != nil {
-		t.Fatalf("Failed to initialize test database: %v", err)
-	}
-
-	uploadDir, err := os.MkdirTemp("", "yib_test_uploads")
-	if err != nil {
-		t.Fatalf("Failed to create temp upload dir: %v", err)
-	}
-
-	// Use new RateLimiter signature with default test values.
-	app := &MockApplication{
-		db:          dbService,
-		rateLimiter: models.NewRateLimiter(30*time.Second, 3, 1*time.Hour, 24*time.Hour),
-		challenges:  models.NewChallengeStore(),
-		uploadDir:   uploadDir,
-		logger:      logger,
-	}
-
-	utils.IPSalt = "test-salt"
-
-	cleanup := func() {
-		app.db.DB.Close()
-		os.RemoveAll(dbDir)
-		os.RemoveAll(uploadDir)
-		utils.IPSalt = ""
-	}
-
-	return app, cleanup
-}
-
-// Helper function to solve a challenge.
-func solveChallenge(challengeStore *models.ChallengeStore) (string, string) {
-	token, question := challengeStore.GenerateChallenge()
-	parts := strings.Fields(question)
-	num1, _ := strconv.Atoi(parts[2])
-	num2Str := strings.TrimSuffix(parts[4], "?")
-	num2, _ := strconv.Atoi(num2Str)
-	answer := strconv.Itoa(num1 + num2)
-	return token, answer
-}
-
-// TestHandlePost integration tests the entire post creation flow.
 func TestHandlePost(t *testing.T) {
-	app, cleanup := setupTestApp(t)
-	defer cleanup()
+	app := setupTestApp(t)
+	handler := http.HandlerFunc(MakeHandler(app, HandlePost))
 
-	if err := os.Chdir(".."); err != nil {
-		t.Fatalf("could not change to root dir: %v", err)
-	}
-	if err := LoadTemplates(); err != nil {
-		t.Fatalf("Failed to load templates: %v", err)
-	}
-
-	// --- Test Case 1: Creating a new thread with an image and thumbnail ---
-	t.Run("Create New Thread with Image", func(t *testing.T) {
+	t.Run("Success - Create New Thread", func(t *testing.T) {
 		body := &bytes.Buffer{}
 		writer := multipart.NewWriter(body)
 		writer.WriteField("board_id", "b")
-		writer.WriteField("subject", "Thread with Image")
-		writer.WriteField("name", "tester")
-		writer.WriteField("content", "This post should have a thumbnail.")
+		writer.WriteField("subject", "Test Thread")
+		writer.WriteField("content", "This is the OP.")
 		token, answer := solveChallenge(app.challenges)
 		writer.WriteField("challenge_token", token)
 		writer.WriteField("challenge_answer", answer)
-
-		// Create a dummy image file part
-		part, _ := writer.CreateFormFile("image", "test.png")
-		// This is the magic byte signature for a PNG file.
-		part.Write([]byte("\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"))
 		writer.Close()
 
-		req := httptest.NewRequest("POST", "/post", body)
+		req := newTestRequest(t, "POST", "/post", body)
 		req.Header.Set("Content-Type", writer.FormDataContentType())
-		ctx := context.WithValue(req.Context(), UserCookieKey, "test-cookie-id")
-		req = req.WithContext(ctx)
-
 		rr := httptest.NewRecorder()
-		handler := http.HandlerFunc(MakeHandler(app, HandlePost))
 		handler.ServeHTTP(rr, req)
 
-		if status := rr.Code; status != http.StatusOK {
-			t.Fatalf("Handler returned wrong status code: got %v want %v. Body: %s", status, http.StatusOK, rr.Body.String())
+		if rr.Code != http.StatusOK {
+			t.Fatalf("Expected status 200, got %d. Body: %s", rr.Code, rr.Body.String())
 		}
 
-		// Verify in the database that thumbnail path is present
-		var thumbPath sql.NullString
-		err := app.db.DB.QueryRow("SELECT thumbnail_path FROM posts WHERE content = ?", "This post should have a thumbnail.").Scan(&thumbPath)
-		if err != nil {
-			t.Fatalf("Could not query for post: %v", err)
+		var resp map[string]string
+		json.Unmarshal(rr.Body.Bytes(), &resp)
+		if !strings.Contains(resp["redirect"], "/b/thread/") {
+			t.Errorf("Expected redirect URL to contain '/b/thread/', got %s", resp["redirect"])
 		}
-		if !thumbPath.Valid || thumbPath.String == "" {
-			t.Error("Expected thumbnail_path to be populated, but it was null or empty")
+
+		var count int
+		app.db.DB.QueryRow("SELECT COUNT(*) FROM threads WHERE subject = 'Test Thread'").Scan(&count)
+		if count != 1 {
+			t.Error("Expected thread to be created in database, but it was not found.")
 		}
-		t.Logf("Thumbnail created at: %s", thumbPath.String)
 	})
 
-	// --- Test Case 2: Post as a Moderator ---
-	t.Run("Create Post as Moderator", func(t *testing.T) {
+	t.Run("Success - Create Reply", func(t *testing.T) {
+		res, _ := app.db.DB.Exec("INSERT INTO threads (id, board_id, bump) VALUES (100, 'b', '2025-01-01')")
+		threadID, _ := res.LastInsertId()
+
 		body := &bytes.Buffer{}
 		writer := multipart.NewWriter(body)
 		writer.WriteField("board_id", "b")
-		writer.WriteField("content", "This is a moderator post.")
+		writer.WriteField("thread_id", "100")
+		writer.WriteField("content", "This is a reply.")
 		token, answer := solveChallenge(app.challenges)
 		writer.WriteField("challenge_token", token)
 		writer.WriteField("challenge_answer", answer)
 		writer.Close()
 
-		req := httptest.NewRequest("POST", "/post", body)
+		req := newTestRequest(t, "POST", "/post", body)
 		req.Header.Set("Content-Type", writer.FormDataContentType())
-		req.RemoteAddr = "127.0.0.1:12345" // Set moderator IP
-		ctx := context.WithValue(req.Context(), UserCookieKey, "mod-cookie-id")
-		req = req.WithContext(ctx)
-
 		rr := httptest.NewRecorder()
-		MakeHandler(app, HandlePost)(rr, req)
+		handler.ServeHTTP(rr, req)
 
-		if status := rr.Code; status != http.StatusOK {
-			t.Fatalf("Handler returned wrong status code: got %v want %v", status, http.StatusOK)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("Expected status 200, got %d. Body: %s", rr.Code, rr.Body.String())
 		}
 
-		// Verify in the database
-		var isModerator bool
-		err := app.db.DB.QueryRow("SELECT is_moderator FROM posts WHERE content = ?", "This is a moderator post.").Scan(&isModerator)
-		if err != nil {
-			t.Fatalf("Could not query for moderator post: %v", err)
+		var replyCount int
+		var bumpTime string
+		app.db.DB.QueryRow("SELECT reply_count, bump FROM threads WHERE id = ?", threadID).Scan(&replyCount, &bumpTime)
+		if replyCount != 1 {
+			t.Errorf("Expected reply_count to be 1, got %d", replyCount)
 		}
-		if !isModerator {
-			t.Error("Expected is_moderator to be true, but it was false")
+		if bumpTime == "2025-01-01" {
+			t.Error("Expected bump time to be updated, but it was not.")
 		}
 	})
 
-	// --- Test Case 3: Reject post with invalid file type ---
-	t.Run("Reject Invalid File Type", func(t *testing.T) {
-		body := &bytes.Buffer{}
-		writer := multipart.NewWriter(body)
-		writer.WriteField("board_id", "b")
-		writer.WriteField("content", "This post should be rejected.")
-		token, answer := solveChallenge(app.challenges)
-		writer.WriteField("challenge_token", token)
-		writer.WriteField("challenge_answer", answer)
-
-		// Create a text file part, not an image
-		part, _ := writer.CreateFormFile("image", "not_an_image.txt")
-		part.Write([]byte("this is just plain text"))
-		writer.Close()
-
-		req := httptest.NewRequest("POST", "/post", body)
-		req.Header.Set("Content-Type", writer.FormDataContentType())
-		ctx := context.WithValue(req.Context(), UserCookieKey, "test-cookie-id-3")
-		req = req.WithContext(ctx)
-
-		rr := httptest.NewRecorder()
-		MakeHandler(app, HandlePost)(rr, req)
-
-		if status := rr.Code; status != http.StatusBadRequest {
-			t.Errorf("Expected status 400 Bad Request for invalid file type, but got %d", status)
+	t.Run("Validation and Security Failures", func(t *testing.T) {
+		testCases := []struct {
+			name           string
+			setup          func(db *sql.DB, rl *models.RateLimiter)
+			formValues     map[string]string
+			remoteAddr     string
+			expectedStatus int
+			expectedError  string
+		}{
+			{
+				name:       "Banned User",
+				remoteAddr: "1.2.3.4:12345",
+				setup: func(db *sql.DB, rl *models.RateLimiter) {
+					ipHash := utils.HashIP("1.2.3.4")
+					db.Exec("INSERT INTO bans (hash, ban_type, reason) VALUES (?, 'ip', 'test ban')", ipHash)
+				},
+				expectedStatus: http.StatusForbidden,
+				expectedError:  "You are banned",
+			},
+			{
+				name:       "Rate Limited User",
+				remoteAddr: "5.6.7.8:12345",
+				setup: func(db *sql.DB, rl *models.RateLimiter) {
+					limiter := rl.GetLimiter("5.6.7.8")
+					for i := 0; i < 5; i++ {
+						limiter.Allow()
+					}
+				},
+				expectedStatus: http.StatusTooManyRequests,
+				expectedError:  "Rate limit exceeded",
+			},
+			{
+				name:       "Reply to Locked Thread",
+				formValues: map[string]string{"board_id": "b", "thread_id": "200", "content": "should fail"},
+				setup: func(db *sql.DB, rl *models.RateLimiter) {
+					db.Exec("INSERT INTO threads (id, board_id, locked) VALUES (200, 'b', 1)")
+				},
+				expectedStatus: http.StatusForbidden,
+				expectedError:  "Thread is locked",
+			},
 		}
 
-		var response map[string]string
-		json.Unmarshal(rr.Body.Bytes(), &response)
-		if !strings.Contains(response["error"], "unsupported file type") {
-			t.Errorf("Expected error message about unsupported file type, but got: %s", response["error"])
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				app.db.DB.Exec("DELETE FROM bans; DELETE FROM threads;")
+				if tc.setup != nil {
+					tc.setup(app.db.DB, app.rateLimiter)
+				}
+
+				body := &bytes.Buffer{}
+				writer := multipart.NewWriter(body)
+				for k, v := range tc.formValues {
+					writer.WriteField(k, v)
+				}
+				token, answer := solveChallenge(app.challenges)
+				writer.WriteField("challenge_token", token)
+				writer.WriteField("challenge_answer", answer)
+				writer.Close()
+
+				req := newTestRequest(t, "POST", "/post", body)
+				req.Header.Set("Content-Type", writer.FormDataContentType())
+				if tc.remoteAddr != "" {
+					req.RemoteAddr = tc.remoteAddr
+				}
+
+				rr := httptest.NewRecorder()
+				handler.ServeHTTP(rr, req)
+
+				if rr.Code != tc.expectedStatus {
+					t.Errorf("Expected status %d, got %d. Body: %s", tc.expectedStatus, rr.Code, rr.Body.String())
+				}
+
+				var resp map[string]string
+				json.Unmarshal(rr.Body.Bytes(), &resp)
+				if !strings.Contains(resp["error"], tc.expectedError) {
+					t.Errorf("Expected error message to contain '%s', got '%s'", tc.expectedError, resp["error"])
+				}
+			})
+		}
+	})
+}
+
+func TestHandleCookieDelete(t *testing.T) {
+	app := setupTestApp(t)
+	handler := http.HandlerFunc(MakeHandler(app, HandleCookieDelete))
+
+	ownerCookieHash := utils.HashIP("owner-cookie")
+
+	t.Run("Success - Owner Deletes Reply", func(t *testing.T) {
+		app.db.DB.Exec("INSERT INTO threads (id, board_id, reply_count) VALUES (300, 'b', 1)")
+		app.db.DB.Exec("INSERT INTO posts (id, thread_id, board_id, cookie_hash) VALUES (301, 300, 'b', 'op-cookie')")
+		app.db.DB.Exec("INSERT INTO posts (id, thread_id, board_id, cookie_hash) VALUES (302, 300, 'b', ?)", ownerCookieHash)
+		t.Cleanup(func() { app.db.DB.Exec("DELETE FROM threads; DELETE FROM posts;") })
+
+		form := strings.NewReader("post_id=302")
+		req := newTestRequest(t, "POST", "/delete", form)
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		*req = *req.WithContext(context.WithValue(req.Context(), UserCookieKey, "owner-cookie"))
+
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("Expected status 200, got %d. Body: %s", rr.Code, rr.Body.String())
+		}
+
+		var count int
+		app.db.DB.QueryRow("SELECT COUNT(*) FROM posts WHERE id = 302").Scan(&count)
+		if count != 0 {
+			t.Error("Expected post to be deleted from database, but it still exists.")
+		}
+	})
+
+	t.Run("Failure - Non-Owner Tries to Delete", func(t *testing.T) {
+		app.db.DB.Exec("INSERT INTO threads (id, board_id, reply_count) VALUES (300, 'b', 1)")
+		app.db.DB.Exec("INSERT INTO posts (id, thread_id, board_id, cookie_hash) VALUES (301, 300, 'b', 'op-cookie')")
+		app.db.DB.Exec("INSERT INTO posts (id, thread_id, board_id, cookie_hash) VALUES (302, 300, 'b', ?)", ownerCookieHash)
+		t.Cleanup(func() { app.db.DB.Exec("DELETE FROM threads; DELETE FROM posts;") })
+
+		form := strings.NewReader("post_id=302")
+		req := newTestRequest(t, "POST", "/delete", form)
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		*req = *req.WithContext(context.WithValue(req.Context(), UserCookieKey, "other-user-cookie"))
+
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusForbidden {
+			t.Errorf("Expected status 403, got %d. Body: %s", rr.Code, rr.Body.String())
 		}
 	})
 }
