@@ -113,7 +113,7 @@ body.theme-1159pm { background: var(--bg); color: var(--text); }
 	background: var(--highlight);
 }
 .theme-1159pm .post.highlight {
-	background: var(--highlight); /* FIX: Was var(--) */
+	background: var(--highlight);
 	border: 2px solid var(--faint);
 }
 
@@ -131,7 +131,7 @@ body.theme-1159pm { background: var(--bg); color: var(--text); }
 }
 
 .theme-1159pm .thread.thread-locked .post.op {
-	background: var(--locked-bg); /* FIX: Was none */
+	background: var(--locked-bg);
 }
 
 .theme-1159pm .form-error {
@@ -190,3 +190,19 @@ body.theme-1159pm { background: var(--bg); color: var(--text); }
 }
 
 .theme-1159pm .catalog-subject { color: var(--title); }
+
+.theme-1159pm .post:hover .spoiler:not(:hover, .revealed),
+.theme-1159pm .post.highlight .spoiler:not(:hover, .revealed) {
+    background-color: var(--faint);
+	color: var(--faint);
+}
+
+.theme-1159pm .spoiler {
+    background-color: var(--highlight);
+    color: var(--highlight);
+}
+
+.theme-1159pm .spoiler:hover, .theme-1159pm .spoiler.revealed {
+    background-color: var(--faint);
+    color: var(--text);
+}
