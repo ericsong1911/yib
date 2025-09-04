@@ -191,8 +191,7 @@ func HandlePost(w http.ResponseWriter, r *http.Request, app App) {
 		redirectURL = fmt.Sprintf("/%s/thread/%d#p%d", boardID, threadID, newPostID)
 	}
 
-	re := regexp.MustCompile(`>>(\d+)`)
-	matches := re.FindAllStringSubmatch(content, -1)
+	matches := reBacklinks.FindAllStringSubmatch(content, -1)
 	if len(matches) > 0 {
 		seen := make(map[string]bool)
 		for _, match := range matches {
@@ -431,8 +430,14 @@ func processImage(r *http.Request, app App, logger *slog.Logger) (string, sql.Nu
 
 func processContent(content string) string {
 	escaped := template.HTMLEscapeString(content)
-	reQuote := regexp.MustCompile(`&gt;&gt;(\d+)`)
-	linked := reQuote.ReplaceAllString(escaped, `<a href="#p$1" class="backlink" data-post="$1">&gt;&gt;$1</a>`)
+
+	// Apply markdown formatting before other processing
+	formatted := applyMarkdownFormatting(escaped)
+
+	// Process backlinks (>>123)
+	linked := reQuoteLinks.ReplaceAllString(formatted, `<a href="#p$1" class="backlink" data-post="$1">&gt;&gt;$1</a>`)
+
+	// Process greentext (lines starting with >)
 	lines := strings.Split(linked, "\n")
 	for i, line := range lines {
 		if strings.HasPrefix(line, "&gt;") && !strings.HasPrefix(line, "&gt;&gt;") {
@@ -440,6 +445,33 @@ func processContent(content string) string {
 		}
 	}
 	return strings.Join(lines, "<br>")
+}
+
+// Precompiled regex patterns for text processing
+var (
+	// Markdown formatting patterns
+	reSpoiler         = regexp.MustCompile(`\|\|([^|]+?)\|\|`)
+	reStrike          = regexp.MustCompile(`~~([^~]+?)~~`)
+	reBoldAsterisk    = regexp.MustCompile(`\*\*([^*]+?)\*\*`)
+	reUnderscore      = regexp.MustCompile(`__([^_]+?)__`)
+	reItalicAsterisk  = regexp.MustCompile(`\*([^*]+?)\*`)
+	reItalicUnderscore = regexp.MustCompile(`_([^_]+?)_`)
+	
+	// Post processing patterns
+	reBacklinks   = regexp.MustCompile(`>>(\d+)`)
+	reQuoteLinks  = regexp.MustCompile(`&gt;&gt;(\d+)`)
+)
+
+// applyMarkdownFormatting processes markdown-style formatting
+func applyMarkdownFormatting(content string) string {
+	// Process longer patterns first to avoid conflicts
+	content = reSpoiler.ReplaceAllString(content, `<span class="spoiler">$1</span>`)
+	content = reStrike.ReplaceAllString(content, `<span class="strikethrough">$1</span>`)
+	content = reBoldAsterisk.ReplaceAllString(content, `<strong>$1</strong>`)
+	content = reUnderscore.ReplaceAllString(content, `<span class="underline">$1</span>`)
+	content = reItalicAsterisk.ReplaceAllString(content, `<em>$1</em>`)
+	content = reItalicUnderscore.ReplaceAllString(content, `<em>$1</em>`)
+	return content
 }
 
 func archiveOldThreads(app App, boardID string) {

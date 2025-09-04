@@ -348,6 +348,30 @@ blockquote.postMessage {
     word-wrap: break-word;
 }
 
+/* Markdown Formatting Styles */
+.underline {
+    text-decoration: underline;
+}
+
+.strikethrough {
+    text-decoration: line-through;
+}
+
+.spoiler {
+    background-color: #000;
+    color: #000;
+    border-radius: 2px;
+    padding: 0 2px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.spoiler:hover,
+.spoiler.revealed {
+    background-color: #333;
+    color: #fff;
+}
+
 /* Omitted posts & Catalog */
 .omitted { 
     font-style: italic; 

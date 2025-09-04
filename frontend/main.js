@@ -222,6 +222,9 @@ function handleGlobalClick(e) {
     } else if (target.classList.contains('js-quote-link')) {
         e.preventDefault();
         quote(target.dataset.postId);
+    } else if (target.classList.contains('spoiler')) {
+        e.preventDefault();
+        target.classList.toggle('revealed');
     }
 }
 

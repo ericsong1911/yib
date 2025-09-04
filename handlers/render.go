@@ -18,6 +18,7 @@ import (
 
 var (
 	templates *template.Template
+	reHTMLTags = regexp.MustCompile("<[^>]*>")
 )
 
 // LoadTemplates parses all HTML files from the templates directory.
@@ -60,7 +61,7 @@ func LoadTemplates() error {
 			}
 			return count
 		},
-		"stripHTML": func(s string) string { return regexp.MustCompile("<[^>]*>").ReplaceAllString(s, "") },
+		"stripHTML": func(s string) string { return reHTMLTags.ReplaceAllString(s, "") },
 		"truncate": func(max int, s string) string {
 			runes := []rune(s)
 			if len(runes) > max {
