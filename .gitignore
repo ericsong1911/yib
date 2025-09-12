@@ -7,6 +7,11 @@
 *.dll
 *.so
 *.dylib
+yib
+
+# Minified js
+static/dist/
+board.min.js
 
 # Test binary, built with `go test -c`
 *.test
