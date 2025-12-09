@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"net"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -330,11 +331,12 @@ func HandleBan(w http.ResponseWriter, r *http.Request, app App) {
 	logger := app.Logger().With("handler", "HandleBan")
 	ipHash := r.FormValue("ip_hash")
 	cookieHash := r.FormValue("cookie_hash")
+	cidr := r.FormValue("cidr")
 	reason := r.FormValue("reason")
 	durationHours, _ := strconv.Atoi(r.FormValue("duration"))
 	modHash := utils.HashIP(utils.GetIPAddress(r))
-	if ipHash == "" && cookieHash == "" {
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "No hash provided to ban."}, app)
+	if ipHash == "" && cookieHash == "" && cidr == "" {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "No hash or CIDR provided to ban."}, app)
 		return
 	}
 	if reason == "" {
@@ -346,49 +348,33 @@ func HandleBan(w http.ResponseWriter, r *http.Request, app App) {
 		expiresAt.Time = utils.GetSQLTime().Add(time.Duration(durationHours) * time.Hour)
 		expiresAt.Valid = true
 	}
-	tx, err := app.DB().DB.Begin()
-	if err != nil {
-		logger.Error("Could not begin transaction for ban", "error", err)
-		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Database error"}, app)
-		return
-	}
-	defer func() {
-		if rerr := tx.Rollback(); rerr != nil && rerr != sql.ErrTxDone {
-			logger.Error("Failed to rollback transaction in HandleBan", "error", rerr)
-		}
-	}()
+	
 	if ipHash != "" {
-		_, err := tx.Exec(`INSERT INTO bans (hash, ban_type, reason, created_at, expires_at) VALUES (?, 'ip', ?, ?, ?) ON CONFLICT(hash, ban_type) DO UPDATE SET reason=excluded.reason, expires_at=excluded.expires_at`,
-			ipHash, reason, utils.GetSQLTime(), expiresAt)
-		if err != nil {
+		if err := app.DB().CreateBan(ipHash, "ip", reason, modHash, expiresAt); err != nil {
 			logger.Error("Failed to apply IP ban", "hash", ipHash, "error", err)
 			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Database error applying IP ban."}, app)
 			return
 		}
-		if err := database.LogModAction(tx, modHash, "apply_ban", 0, fmt.Sprintf("IP Hash: %s, Reason: %s", ipHash, reason)); err != nil {
-			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Database error logging ban."}, app)
-			return
-		}
 	}
 	if cookieHash != "" {
-		_, err := tx.Exec(`INSERT INTO bans (hash, ban_type, reason, created_at, expires_at) VALUES (?, 'cookie', ?, ?, ?) ON CONFLICT(hash, ban_type) DO UPDATE SET reason=excluded.reason, expires_at=excluded.expires_at`,
-			cookieHash, reason, utils.GetSQLTime(), expiresAt)
-		if err != nil {
+		if err := app.DB().CreateBan(cookieHash, "cookie", reason, modHash, expiresAt); err != nil {
 			logger.Error("Failed to apply Cookie ban", "hash", cookieHash, "error", err)
 			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Database error applying cookie ban."}, app)
 			return
 		}
-		if err := database.LogModAction(tx, modHash, "apply_ban", 0, fmt.Sprintf("Cookie Hash: %s, Reason: %s", cookieHash, reason)); err != nil {
-			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Database error logging ban."}, app)
+	}
+	if cidr != "" {
+		if _, _, err := net.ParseCIDR(cidr); err != nil {
+			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid CIDR notation."}, app)
+			return
+		}
+		if err := app.DB().CreateBan(cidr, "cidr", reason, modHash, expiresAt); err != nil {
+			logger.Error("Failed to apply CIDR ban", "cidr", cidr, "error", err)
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Database error applying CIDR ban."}, app)
 			return
 		}
 	}
-	if err := tx.Commit(); err != nil {
-		logger.Error("Failed to commit ban transaction", "error", err)
-		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Database error applying ban."}, app)
-		return
-	}
-	logger.Info("Ban applied", "reason", reason, "ip_hash", ipHash, "cookie_hash", cookieHash)
+	logger.Info("Ban applied", "reason", reason, "ip_hash", ipHash, "cookie_hash", cookieHash, "cidr", cidr)
 	respondJSON(w, http.StatusOK, map[string]string{"success": "Ban successfully applied."}, app)
 }
 
@@ -854,4 +840,26 @@ func HandleDatabaseBackup(w http.ResponseWriter, r *http.Request, app App) {
 		return
 	}
 	http.Redirect(w, r, "/mod/", http.StatusSeeOther)
+}
+
+func HandleMassDelete(w http.ResponseWriter, r *http.Request, app App) {
+	logger := app.Logger().With("handler", "HandleMassDelete")
+	hash := r.FormValue("hash")
+	hashType := r.FormValue("type")
+	
+	if hash == "" || (hashType != "ip" && hashType != "cookie") {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid hash or hash type."}, app)
+		return
+	}
+
+	modHash := utils.HashIP(utils.GetIPAddress(r))
+	count, err := app.DB().DeletePostsByHash(hash, hashType, app.UploadDir(), modHash)
+	if err != nil {
+		logger.Error("Failed to mass delete posts", "hash", hash, "type", hashType, "error", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to delete posts: " + err.Error()}, app)
+		return
+	}
+
+	logger.Info("Mass deleted posts", "count", count, "hash", hash, "type", hashType)
+	respondJSON(w, http.StatusOK, map[string]string{"success": fmt.Sprintf("Deleted %d posts.", count)}, app)
 }

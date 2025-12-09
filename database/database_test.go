@@ -180,7 +180,7 @@ func TestGetBanDetails(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			ban, isBanned := ds.GetBanDetails(tc.ipHash, tc.cookieHash)
+			ban, isBanned := ds.GetBanDetails("127.0.0.1", tc.ipHash, tc.cookieHash)
 			if isBanned != tc.isBanned {
 				t.Errorf("Expected isBanned to be %v, but got %v", tc.isBanned, isBanned)
 			}

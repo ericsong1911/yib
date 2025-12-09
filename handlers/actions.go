@@ -55,7 +55,23 @@ func HandlePost(w http.ResponseWriter, r *http.Request, app App) {
 	cookieID := r.Context().Value(UserCookieKey).(string)
 	cookieHash := utils.HashIP(cookieID)
 
-	if ban, isBanned := app.DB().GetBanDetails(ipHash, cookieHash); isBanned {
+	if ban, isBanned := app.DB().GetBanDetails(ip, ipHash, cookieHash); isBanned {
+		// Auto-ban logic: 
+		// 1. If user is banned by cookie, but IP is clean -> Ban IP (Evasion)
+		// 2. If user is banned by IP/CIDR, but cookie is clean -> Ban Cookie (Reverse Evasion)
+		
+		isIPBanned, _ := app.DB().IsHashBanned(ipHash, "ip")
+		if ban.BanType == "cookie" && !isIPBanned {
+			logger.Info("Auto-banning evasion IP", "ip_hash", ipHash, "original_reason", ban.Reason)
+			app.DB().CreateBan(ipHash, "ip", ban.Reason, "system", ban.ExpiresAt)
+		}
+
+		isCookieBanned, _ := app.DB().IsHashBanned(cookieHash, "cookie")
+		if (ban.BanType == "ip" || ban.BanType == "cidr") && !isCookieBanned {
+			logger.Info("Auto-banning evasion cookie", "cookie_hash", cookieHash, "original_reason", ban.Reason)
+			app.DB().CreateBan(cookieHash, "cookie", ban.Reason, "system", ban.ExpiresAt)
+		}
+
 		expiryText := "This ban is permanent."
 		if ban.ExpiresAt.Valid {
 			isoTime := ban.ExpiresAt.Time.Format(time.RFC3339)
@@ -268,10 +284,11 @@ func HandleCookieDelete(w http.ResponseWriter, r *http.Request, app App) {
 // HandleReport allows a user to report a post for moderation.
 func HandleReport(w http.ResponseWriter, r *http.Request, app App) {
 	logger := app.Logger().With("handler", "HandleReport")
-	ipHash := utils.HashIP(utils.GetIPAddress(r))
+	ip := utils.GetIPAddress(r)
+	ipHash := utils.HashIP(ip)
 	cookieHash := utils.HashIP(r.Context().Value(UserCookieKey).(string))
 
-	if _, isBanned := app.DB().GetBanDetails(ipHash, cookieHash); isBanned {
+	if _, isBanned := app.DB().GetBanDetails(ip, ipHash, cookieHash); isBanned {
 		logger.Warn("Banned user tried to submit report", "ip_hash", ipHash)
 		respondJSON(w, http.StatusForbidden, map[string]string{"error": "You are banned and cannot submit reports."}, app)
 		return

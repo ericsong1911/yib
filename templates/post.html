@@ -8,12 +8,12 @@
     {{end}}
     <div class="postInfo">
         {{if and .Post.IsOp .Post.Subject}}<span class="subject">{{.Post.Subject}}</span>{{end}}
-        <span class="nameBlock">
-            <span class="name">{{.Post.Name | default "Anonymous"}}</span>
-            {{if .Post.Tripcode}}<span class="postertrip">{{.Post.Tripcode}}</span>{{end}}
-            {{if .Post.IsModerator}}<span class="mod-indicator">◆ Admin</span>{{end}}
-        </span>
-        <time class="post-time dateTime" datetime="{{.Post.Timestamp | formatISO}}">{{.Post.Timestamp | formatTime}}</time>
+        		<span class="nameBlock">
+                    <span class="name">{{.Post.Name | default "Anonymous"}}</span>
+                    {{if .Post.Tripcode}}<span class="postertrip">{{.Post.Tripcode}}</span>{{end}}
+                    {{if .Post.ThreadUserID}}<span class="thread-user-id">ID:{{.Post.ThreadUserID}}</span>{{end}}
+                    {{if .Post.IsModerator}}<span class="mod-indicator">◆ Admin</span>{{end}}
+                </span>        <time class="post-time dateTime" datetime="{{.Post.Timestamp | formatISO}}">{{.Post.Timestamp | formatTime}}</time>
         <span class="postNum">
             {{if .IsThreadView}}
                 <a href="#p{{.Post.ID}}">No.</a>

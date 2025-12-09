@@ -20,7 +20,6 @@ import (
 	"yib/utils"
 )
 
-// Application holds all the dependencies for the web server.
 type Application struct {
 	db          *database.DatabaseService
 	rateLimiter *models.RateLimiter
@@ -31,15 +30,17 @@ type Application struct {
 	maxFileSize int64
 	maxWidth    int
 	maxHeight   int
+	dailySalt   string
 }
 
-// --- Methods to satisfy the handlers.App interface ---
+// Methods to satisfy the handlers.App interface
 func (a *Application) DB() *database.DatabaseService      { return a.db }
 func (a *Application) RateLimiter() *models.RateLimiter   { return a.rateLimiter }
 func (a *Application) Challenges() *models.ChallengeStore { return a.challenges }
 func (a *Application) Logger() *slog.Logger               { return a.logger }
 func (a *Application) UploadDir() string                  { return a.uploadDir }
 func (a *Application) BannerFile() string                 { return a.bannerFile }
+func (a *Application) DailySalt() string                  { return a.dailySalt }
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -51,6 +52,8 @@ func main() {
 		os.Exit(1)
 	}
 	utils.IPSalt = hex.EncodeToString(saltBytes)
+
+	dailySalt := utils.GetDailySalt()
 
 	// --- External Configuration ---
 	port := os.Getenv("YIB_PORT")
@@ -65,7 +68,7 @@ func main() {
 	if backupDir == "" {
 		backupDir = "./backups"
 	}
-	utils.BackupDir = backupDir // Set global backup directory
+	utils.BackupDir = backupDir
 	if err := os.MkdirAll(utils.BackupDir, 0755); err != nil {
 		logger.Error("FATAL: Could not create backup directory", "path", utils.BackupDir, "error", err)
 		os.Exit(1)
@@ -92,7 +95,7 @@ func main() {
 		rateLimitExpire, _ = time.ParseDuration(config.DefaultRateLimitExpire)
 	}
 
-	dbService, err := database.InitDB(dbPath, logger) // Pass logger to DB
+	dbService, err := database.InitDB(dbPath, logger)
 	if err != nil {
 		logger.Error("Failed to initialize database", "error", err)
 		os.Exit(1)
@@ -117,26 +120,25 @@ func main() {
 		db:          dbService,
 		rateLimiter: models.NewRateLimiter(rateLimitEvery, rateLimitBurst, rateLimitPrune, rateLimitExpire),
 		challenges:  models.NewChallengeStore(),
-		logger:      logger, // Store logger
+		logger:      logger,
 		uploadDir:   "./uploads",
 		bannerFile:  "./banner.txt",
 		maxFileSize: config.MaxFileSize,
 		maxHeight:   config.MaxHeight,
 		maxWidth:    config.MaxWidth,
+		dailySalt:   dailySalt,
 	}
 
-	// Chi router setup
 	mux := handlers.SetupRouter(app)
 	finalHandler := handlers.AppContextMiddleware(app, handlers.CookieMiddleware(handlers.CSRFMiddleware(handlers.SecurityHeadersMiddleware(mux))))
 
 	// --- Graceful Shutdown ---
 	server := &http.Server{Addr: ":" + port, Handler: finalHandler}
 
-	// Start the server in a background goroutine.
 	go func() {
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Error("Server failed unexpectedly", "error", err)
-			os.Exit(1) // Exit if the server can't start (e.g., port in use).
+			os.Exit(1)
 		}
 	}()
 
@@ -147,7 +149,7 @@ func main() {
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
-	<-quit // This is where the program will "hang" (correctly).
+	<-quit
 
 	logger.Info("Shutting down server...")
 

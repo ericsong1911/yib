@@ -46,12 +46,13 @@ type Post struct {
 	Subject       string
 	Content       string
 	ImagePath     string
-	ThumbnailPath sql.NullString // NEW-FEATURE: Path to the smaller thumbnail image.
+	ThumbnailPath sql.NullString
 	ImageHash     string
 	Timestamp     time.Time
 	IPHash        string
 	CookieHash    string
-	IsModerator   bool // NEW-FEATURE: True if the post was made by a moderator.
+	IsModerator   bool
+	ThreadUserID  string
 	Backlinks     []int64
 }
 

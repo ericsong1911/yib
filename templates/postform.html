@@ -24,7 +24,10 @@
 
                 <tr>
                     <td>Comment <span class="required">*</span></td>
-                    <td><textarea name="content" required maxlength="8000">{{.FormInput.Content}}</textarea></td>
+                    <td>
+                        <textarea name="content" required maxlength="8000">{{.FormInput.Content}}</textarea>
+                        <button type="button" id="emoji-toggle" style="margin-top: 5px; cursor: pointer;">😀</button>
+                    </td>
                 </tr>
 
                 <tr>

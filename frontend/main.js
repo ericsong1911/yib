@@ -11,6 +11,7 @@ import {
     quote
 } from './dom.js';
 import { showPreview, hidePreview } from './preview.js';
+import { initEmojiPicker } from './emoji.js';
 
 // --- HELPER FUNCTIONS ---
 function saveNameToHistory(name) {
@@ -199,6 +200,21 @@ function handlePostDeletion(target) {
     ]).show();
 }
 
+function handleMassDelete(button) {
+    const { hash, type, csrfToken } = button.dataset;
+    const message = `WARNING: Are you sure you want to delete ALL posts associated with this ${type.toUpperCase()} hash? This cannot be undone.`;
+    new Modal('Confirmation Required', `<p>${message}</p>`, [
+        { id: 'modal-cancel', text: 'Cancel' },
+        {
+            id: 'modal-confirm', text: 'Confirm Mass Delete', class: 'button-danger',
+            onClick: (evt, modal) => {
+                const data = { hash, type, csrf_token: csrfToken };
+                handleModalApiSubmit(modal, '/mod/mass-delete', data, "Mass deletion complete.");
+            }
+        }
+    ]).show();
+}
+
 function handleGlobalClick(e) {
     const target = e.target;
     if (target.classList.contains('postImg') && target.closest('a')) {
@@ -216,6 +232,9 @@ function handleGlobalClick(e) {
     } else if (target.classList.contains('js-user-delete') || target.classList.contains('js-mod-delete')) {
         e.preventDefault();
         handlePostDeletion(target);
+    } else if (target.classList.contains('js-mass-delete')) {
+        e.preventDefault();
+        handleMassDelete(target);
     } else if (target.classList.contains('js-board-delete')) {
         e.preventDefault();
         showBoardDeleteModal(target);
@@ -340,12 +359,13 @@ function initManualBanForm() {
         const data = {
             ip_hash: document.getElementById('manual-ban-ip-hash').value,
             cookie_hash: document.getElementById('manual-ban-cookie-hash').value,
+            cidr: document.getElementById('manual-ban-cidr').value,
             reason: document.getElementById('manual-ban-reason').value,
             duration: document.getElementById('manual-ban-duration').value,
             csrf_token: document.getElementById('manual-ban-csrf').value,
         };
-        if (!data.ip_hash && !data.cookie_hash) {
-            Modal.alert('Error', 'You must provide at least one hash to ban.');
+        if (!data.ip_hash && !data.cookie_hash && !data.cidr) {
+            Modal.alert('Error', 'You must provide at least one hash or CIDR to ban.');
             return;
         }
         const promise = handleModalApiSubmit(dummyModal, '/mod/ban', data, "Ban successfully applied.");
@@ -406,6 +426,7 @@ function init() {
     initNameHistory();
     initAutoRefresh();
     initFileInputHandler();
+    initEmojiPicker();
 
     // Run logic specific to user-facing pages.
     if (document.body.id !== 'mod-page') {

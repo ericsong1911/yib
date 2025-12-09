@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -188,7 +189,7 @@ func (ds *DatabaseService) GetThreadCount(boardID string, archived bool) (int, e
 }
 
 // GetThreadsForBoard retrieves a paginated list of threads for a board page.
-func (ds *DatabaseService) GetThreadsForBoard(boardID string, archived bool, page, pageSize int, fetchReplies bool) ([]models.Thread, error) {
+func (ds *DatabaseService) GetThreadsForBoard(boardID string, archived bool, page, pageSize int, fetchReplies bool, dailySalt string) ([]models.Thread, error) {
 	offset := (page - 1) * pageSize
 	// Select new thumbnail and moderator columns
 	rows, err := ds.DB.Query(`
@@ -220,6 +221,7 @@ func (ds *DatabaseService) GetThreadsForBoard(boardID string, archived bool, pag
 			continue
 		}
 		op.IsOp, op.BoardID, op.ThreadID, op.Subject = true, boardID, t.ID, t.Subject
+		op.ThreadUserID = utils.GenerateThreadUserID(op.IPHash, op.ThreadID, dailySalt)
 		t.Op = op
 		threads = append(threads, t)
 	}
@@ -238,7 +240,7 @@ func (ds *DatabaseService) GetThreadsForBoard(boardID string, archived bool, pag
 	}
 
 	if fetchReplies {
-		ds.fetchAndAssignReplies(threadMap, postMap)
+		ds.fetchAndAssignReplies(threadMap, postMap, dailySalt)
 	}
 
 	allPostIDs := make([]interface{}, 0, len(postMap))
@@ -256,7 +258,7 @@ func (ds *DatabaseService) GetThreadsForBoard(boardID string, archived bool, pag
 }
 
 // GetPostsForThread fetches a single thread and all its posts.
-func (ds *DatabaseService) GetPostsForThread(threadID int64) ([]models.Post, error) {
+func (ds *DatabaseService) GetPostsForThread(threadID int64, dailySalt string) ([]models.Post, error) {
 	// Select new columns
 	rows, err := ds.DB.Query("SELECT id, board_id, thread_id, name, tripcode, content, image_path, thumbnail_path, timestamp, ip_hash, cookie_hash, is_moderator FROM posts WHERE thread_id = ? ORDER BY id ASC", threadID)
 	if err != nil {
@@ -276,6 +278,7 @@ func (ds *DatabaseService) GetPostsForThread(threadID int64) ([]models.Post, err
 			ds.logger.Error("Failed to scan post row", "error", err)
 			continue
 		}
+		p.ThreadUserID = utils.GenerateThreadUserID(p.IPHash, p.ThreadID, dailySalt)
 		posts = append(posts, p)
 	}
 	if err := rows.Err(); err != nil {
@@ -304,7 +307,7 @@ func (ds *DatabaseService) GetPostsForThread(threadID int64) ([]models.Post, err
 }
 
 // GetPostByID fetches a single post by its ID. Used for previews.
-func (ds *DatabaseService) GetPostByID(postID int64) (*models.Post, error) {
+func (ds *DatabaseService) GetPostByID(postID int64, dailySalt string) (*models.Post, error) {
 	var p models.Post
 	var subject sql.NullString
 	// Select new columns
@@ -323,6 +326,7 @@ func (ds *DatabaseService) GetPostByID(postID int64) (*models.Post, error) {
 	if p.IsOp && subject.Valid {
 		p.Subject = subject.String
 	}
+	p.ThreadUserID = utils.GenerateThreadUserID(p.IPHash, p.ThreadID, dailySalt)
 
 	postIDs := []interface{}{p.ID}
 	postMap := map[int64]*models.Post{p.ID: &p}
@@ -336,22 +340,47 @@ func (ds *DatabaseService) GetPostByID(postID int64) (*models.Post, error) {
 }
 
 // GetBanDetails checks if a user is banned.
-func (ds *DatabaseService) GetBanDetails(ipHash, cookieHash string) (models.Ban, bool) {
+func (ds *DatabaseService) GetBanDetails(ip, ipHash, cookieHash string) (models.Ban, bool) {
 	var ban models.Ban
 	err := ds.DB.QueryRow(`
-		SELECT reason, expires_at FROM bans
+		SELECT reason, expires_at, ban_type FROM bans
 		WHERE (expires_at IS NULL OR expires_at > ?)
 		AND ((hash = ? AND ban_type = 'ip') OR (hash = ? AND ban_type = 'cookie'))
 		ORDER BY created_at DESC LIMIT 1`,
-		utils.GetSQLTime(), ipHash, cookieHash).Scan(&ban.Reason, &ban.ExpiresAt)
+		utils.GetSQLTime(), ipHash, cookieHash).Scan(&ban.Reason, &ban.ExpiresAt, &ban.BanType)
 
+	if err == nil {
+		return ban, true
+	}
+	if err != sql.ErrNoRows {
+		ds.logger.Error("Failed to query for ban details", "error", err)
+	}
+
+	// Check CIDR bans
+	cidrRows, err := ds.DB.Query("SELECT hash, reason, expires_at FROM bans WHERE ban_type = 'cidr' AND (expires_at IS NULL OR expires_at > ?)", utils.GetSQLTime())
 	if err != nil {
-		if err != sql.ErrNoRows {
-			ds.logger.Error("Failed to query for ban details", "error", err)
-		}
+		ds.logger.Error("Failed to query CIDR bans", "error", err)
 		return ban, false
 	}
-	return ban, true
+	defer cidrRows.Close()
+
+	userIP := net.ParseIP(ip)
+	if userIP == nil {
+		return ban, false
+	}
+
+	for cidrRows.Next() {
+		var cidrStr string
+		if err := cidrRows.Scan(&cidrStr, &ban.Reason, &ban.ExpiresAt); err == nil {
+			_, subnet, err := net.ParseCIDR(cidrStr)
+			if err == nil && subnet.Contains(userIP) {
+				ban.BanType = "cidr" // Explicitly set type for CIDR match
+				return ban, true
+			}
+		}
+	}
+
+	return ban, false
 }
 
 // DeletePost handles the logic of deleting a post or an entire thread.
@@ -449,7 +478,138 @@ func (ds *DatabaseService) DeletePost(postID int64, uploadDir string, modHash, d
 	return boardID, isOp, tx.Commit()
 }
 
-// DeleteBoard permanently removes a board and all its content.
+// DeletePostsByHash deletes all posts matching a specific IP or Cookie hash.
+func (ds *DatabaseService) DeletePostsByHash(hash, hashType, uploadDir, modHash string) (int64, error) {
+	tx, err := ds.DB.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer func() {
+		if rerr := tx.Rollback(); rerr != nil && rerr != sql.ErrTxDone {
+			ds.logger.Error("Failed to rollback transaction in DeletePostsByHash", "error", rerr)
+		}
+	}()
+
+	var column string
+	if hashType == "ip" {
+		column = "ip_hash"
+	} else if hashType == "cookie" {
+		column = "cookie_hash"
+	} else {
+		return 0, fmt.Errorf("invalid hash type: %s", hashType)
+	}
+
+	rows, err := tx.Query(fmt.Sprintf("SELECT id FROM posts WHERE %s = ?", column), hash)
+	if err != nil {
+		return 0, err
+	}
+
+	var postIDs []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err == nil {
+			postIDs = append(postIDs, id)
+		}
+	}
+	rows.Close()
+
+	if len(postIDs) == 0 {
+		return 0, nil
+	}
+
+	deletedCount := int64(0)
+	for _, postID := range postIDs {
+		// Reuse logic similar to DeletePost but within this transaction.
+
+		var boardID string
+		var threadID int64
+		var imagePath, thumbnailPath, imageHash sql.NullString
+		var isOp bool
+
+		err := tx.QueryRow(`SELECT board_id, thread_id, image_path, thumbnail_path, image_hash, (SELECT id FROM posts WHERE thread_id = p.thread_id ORDER BY id ASC LIMIT 1) = p.id as is_op FROM posts p WHERE id = ?`, postID).Scan(&boardID, &threadID, &imagePath, &thumbnailPath, &imageHash, &isOp)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				continue // Already deleted
+			}
+			return 0, err
+		}
+
+		type fileToDelete struct{ Path, Hash string }
+		filesToCheck := make(map[string]fileToDelete)
+
+		if isOp {
+			rows, err := tx.Query("SELECT image_path, thumbnail_path, image_hash FROM posts WHERE thread_id = ? AND image_path IS NOT NULL AND image_path != ''", threadID)
+			if err != nil {
+				return 0, err
+			}
+			for rows.Next() {
+				var p, t, h sql.NullString
+				if err := rows.Scan(&p, &t, &h); err == nil {
+					if p.Valid {
+						filesToCheck[p.String] = fileToDelete{Path: p.String, Hash: h.String}
+					}
+					if t.Valid {
+						filesToCheck[t.String] = fileToDelete{Path: t.String, Hash: h.String}
+					}
+				}
+			}
+			rows.Close()
+			if _, err := tx.Exec("DELETE FROM threads WHERE id = ?", threadID); err != nil {
+				return 0, err
+			}
+		} else {
+			if imagePath.Valid && imageHash.Valid {
+				filesToCheck[imagePath.String] = fileToDelete{Path: imagePath.String, Hash: imageHash.String}
+				if thumbnailPath.Valid {
+					filesToCheck[thumbnailPath.String] = fileToDelete{Path: thumbnailPath.String, Hash: imageHash.String}
+				}
+			}
+			if _, err := tx.Exec("DELETE FROM posts WHERE id = ?", postID); err != nil {
+				return 0, err
+			}
+			// Ideally update thread counts, but for mass nuke it might be acceptable to be slightly off or fix later.
+			// However, to be correct:
+			if _, err := tx.Exec("UPDATE threads SET reply_count = reply_count - 1 WHERE id = ?", threadID); err != nil {
+				// Ignore error if thread deleted? No, thread should exist if post existed as reply.
+			}
+			if imagePath.Valid {
+				if _, err := tx.Exec("UPDATE threads SET image_count = image_count - 1 WHERE id = ?", threadID); err != nil {
+					// same
+				}
+			}
+		}
+
+		// Delete files
+		for _, file := range filesToCheck {
+			var count int
+			// Check if other posts use this hash (in case of duplicate images across threads/boards)
+			// Note: We are in a transaction, so we should check against the DB state.
+			// But since we just deleted the post, the count should reflect that.
+			if err := tx.QueryRow("SELECT COUNT(*) FROM posts WHERE image_hash = ?", file.Hash).Scan(&count); err == nil && count == 0 {
+				filePath := filepath.Join(uploadDir, filepath.Base(file.Path))
+				os.Remove(filePath)
+			}
+		}
+
+		deletedCount++
+	}
+
+	// Cleanup orphaned reports
+	// In DeletePost we do: DELETE FROM reports WHERE post_id = ?
+	// Since we deleted posts, reports referencing them should be removed.
+	// We can do a cleanup query:
+	if _, err := tx.Exec("DELETE FROM reports WHERE post_id NOT IN (SELECT id FROM posts)"); err != nil {
+		ds.logger.Warn("Failed to cleanup reports during mass delete", "error", err)
+	}
+
+	if err := LogModAction(tx, modHash, "mass_delete", 0, fmt.Sprintf("Deleted %d posts for %s hash %s", deletedCount, hashType, hash)); err != nil {
+		return 0, err
+	}
+
+	return deletedCount, tx.Commit()
+}
+
+// SearchPosts performs a full-text search on posts using FTS5.
 func (ds *DatabaseService) DeleteBoard(boardID, uploadDir, modHash string) error {
 	tx, err := ds.DB.Begin()
 	if err != nil {
@@ -564,6 +724,43 @@ func LogModAction(tx *sql.Tx, modHash, action string, targetID int64, details st
 	return nil
 }
 
+// CreateBan inserts a new ban record.
+func (ds *DatabaseService) CreateBan(hash, banType, reason, modHash string, expiresAt sql.NullTime) error {
+	tx, err := ds.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if rerr := tx.Rollback(); rerr != nil && rerr != sql.ErrTxDone {
+			ds.logger.Error("Failed to rollback transaction in CreateBan", "error", rerr)
+		}
+	}()
+
+	_, err = tx.Exec(`INSERT INTO bans (hash, ban_type, reason, created_at, expires_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(hash, ban_type) DO UPDATE SET reason=excluded.reason, expires_at=excluded.expires_at`,
+		hash, banType, reason, utils.GetSQLTime(), expiresAt)
+	if err != nil {
+		return fmt.Errorf("failed to insert ban: %w", err)
+	}
+
+	if modHash != "" {
+		if err := LogModAction(tx, modHash, "apply_ban", 0, fmt.Sprintf("%s Hash: %s, Reason: %s", strings.ToUpper(banType), hash, reason)); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+// IsHashBanned checks if a specific hash is explicitly banned.
+func (ds *DatabaseService) IsHashBanned(hash, banType string) (bool, error) {
+	var count int
+	err := ds.DB.QueryRow("SELECT COUNT(*) FROM bans WHERE hash = ? AND ban_type = ? AND (expires_at IS NULL OR expires_at > ?)", hash, banType, utils.GetSQLTime()).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
 // --- Cache Management ---
 func (ds *DatabaseService) ClearBoardCache(boardID string) {
 	ds.cacheMu.Lock()
@@ -577,7 +774,7 @@ func (ds *DatabaseService) ClearAllBoardCaches() {
 }
 
 // --- Internal Helpers ---
-func (ds *DatabaseService) fetchAndAssignReplies(threadMap map[int64]*models.Thread, postMap map[int64]*models.Post) {
+func (ds *DatabaseService) fetchAndAssignReplies(threadMap map[int64]*models.Thread, postMap map[int64]*models.Post, dailySalt string) {
 	if len(threadMap) == 0 {
 		return
 	}
@@ -612,6 +809,7 @@ func (ds *DatabaseService) fetchAndAssignReplies(threadMap map[int64]*models.Thr
 			ds.logger.Error("Failed to scan reply post", "error", err)
 			continue
 		}
+		p.ThreadUserID = utils.GenerateThreadUserID(p.IPHash, p.ThreadID, dailySalt)
 		if thread, ok := threadMap[p.ThreadID]; ok {
 			thread.Posts = append(thread.Posts, p)
 			postMap[p.ID] = &thread.Posts[len(thread.Posts)-1]

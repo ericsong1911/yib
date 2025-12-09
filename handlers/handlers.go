@@ -30,6 +30,7 @@ type App interface {
 	Logger() *slog.Logger
 	UploadDir() string
 	BannerFile() string
+	DailySalt() string
 }
 
 // --- Board List Cache ---
@@ -268,7 +269,7 @@ func HandleBoard(w http.ResponseWriter, r *http.Request, app App, boardConfig *m
 	}
 	pageSize := 10
 
-	threads, err := app.DB().GetThreadsForBoard(boardConfig.ID, false, page, pageSize, true)
+	threads, err := app.DB().GetThreadsForBoard(boardConfig.ID, false, page, pageSize, true, app.DailySalt())
 	if err != nil {
 		logger.Error("DB error getting threads", "error", err)
 		http.Error(w, "Database error loading board.", 500)
@@ -302,7 +303,7 @@ func HandleCatalog(w http.ResponseWriter, r *http.Request, app App, boardConfig 
 	}
 	pageSize := 25
 
-	threads, err := app.DB().GetThreadsForBoard(boardConfig.ID, false, page, pageSize, false)
+	threads, err := app.DB().GetThreadsForBoard(boardConfig.ID, false, page, pageSize, false, app.DailySalt())
 	if err != nil {
 		log.Printf("ERROR: DB error getting catalog for /%s/: %v", boardConfig.ID, err)
 		http.Error(w, "Database error loading catalog.", 500)
@@ -334,7 +335,7 @@ func HandleArchive(w http.ResponseWriter, r *http.Request, app App, boardConfig 
 	}
 	pageSize := 25
 
-	threads, err := app.DB().GetThreadsForBoard(boardConfig.ID, true, page, pageSize, false)
+	threads, err := app.DB().GetThreadsForBoard(boardConfig.ID, true, page, pageSize, false, app.DailySalt())
 	if err != nil {
 		log.Printf("ERROR: DB error getting archive for /%s/: %v", boardConfig.ID, err)
 		http.Error(w, "Database error loading archive.", 500)
@@ -378,7 +379,7 @@ func HandleThread(w http.ResponseWriter, r *http.Request, app App, boardConfig *
 		return
 	}
 
-	thread.Posts, err = app.DB().GetPostsForThread(threadID)
+	thread.Posts, err = app.DB().GetPostsForThread(threadID, app.DailySalt())
 	if err != nil {
 		log.Printf("ERROR: DB error getting posts for thread %d: %v", threadID, err)
 		http.Error(w, "Database error loading posts.", 500)
@@ -412,7 +413,7 @@ func HandlePostPreview(w http.ResponseWriter, r *http.Request, app App) {
 		return
 	}
 
-	post, err := app.DB().GetPostByID(postID)
+	post, err := app.DB().GetPostByID(postID, app.DailySalt())
 	if err != nil {
 		if err == sql.ErrNoRows {
 			http.NotFound(w, r)

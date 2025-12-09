@@ -1,23 +1,30 @@
+// yib/utils/security.go
 package utils
 
 import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"fmt"
 	"net"
 	"net/http"
 	"strings"
 )
 
 var (
-	// IPSalt is a global salt for hashing IPs, initialized at startup.
 	IPSalt string
 )
 
 // GetIPAddress extracts the real IP address from a request, trusting X-Real-IP from a reverse proxy.
 func GetIPAddress(r *http.Request) string {
-	ip := r.Header.Get("X-Real-IP")
-	if ip != "" {
+	if cf := r.Header.Get("CF-Connecting-IP"); cf != "" {
+		return cf
+	}
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		parts := strings.Split(xff, ",")
+		return strings.TrimSpace(parts[0])
+	}
+	if ip := r.Header.Get("X-Real-IP"); ip != "" {
 		return ip
 	}
 	ip, _, err := net.SplitHostPort(r.RemoteAddr)
@@ -30,7 +37,7 @@ func GetIPAddress(r *http.Request) string {
 // HashIP creates a salted SHA256 hash of a string (IP or cookie) and returns a truncated hex string.
 func HashIP(ip string) string {
 	hash := sha256.Sum256([]byte(ip + IPSalt))
-	return hex.EncodeToString(hash[:16]) // Return 32 characters
+	return hex.EncodeToString(hash[:16])
 }
 
 // IsModerator checks if the request is coming from a private or loopback IP address.
@@ -48,7 +55,6 @@ func GenerateTripcode(name string) (string, string) {
 		return displayName, ""
 	}
 	password := parts[1]
-	// This salt is static and part of the tripcode algorithm.
 	salt := password + "yalie-salt-shaker"
 	h := sha256.Sum256([]byte(salt))
 	trip := base64.StdEncoding.EncodeToString(h[:])
@@ -57,8 +63,13 @@ func GenerateTripcode(name string) (string, string) {
 
 // GenerateBoardSessionHash creates a secure hash for a board-specific session cookie.
 func GenerateBoardSessionHash(boardPasswordHash string) string {
-	// We hash the already-hashed password with the static IP salt.
-	// This creates a new, non-password hash unique to this session's value.
 	hash := sha256.Sum256([]byte(boardPasswordHash + IPSalt))
 	return hex.EncodeToString(hash[:])
+}
+
+// GenerateThreadUserID creates a consistent, thread-specific anonymous ID for a user.
+func GenerateThreadUserID(ipHash string, threadID int64, dailySalt string) string {
+	input := fmt.Sprintf("%s-%d-%s", ipHash, threadID, dailySalt)
+	hash := sha256.Sum256([]byte(input))
+	return hex.EncodeToString(hash[:4])
 }

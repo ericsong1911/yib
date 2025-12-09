@@ -9,6 +9,7 @@
 <hr>
 <h3>{{.Results.IP.Title}}</h3>
 {{if .Results.IP.Posts}}
+<button type="button" class="button-danger js-mass-delete" data-hash="{{$.IPHash}}" data-type="ip" data-csrf-token="{{$.csrfToken}}">Delete All Posts (Mass Nuke)</button>
 <table>
     <thead><tr><th>Post</th><th>User</th><th>Cookie Hash</th><th>Content</th><th>Time</th><th>Actions</th></tr></thead>
     <tbody>
@@ -38,6 +39,7 @@
 <hr>
 <h3>{{.Results.Cookie.Title}}</h3>
 {{if .Results.Cookie.Posts}}
+<button type="button" class="button-danger js-mass-delete" data-hash="{{$.CookieHash}}" data-type="cookie" data-csrf-token="{{$.csrfToken}}">Delete All Posts (Mass Nuke)</button>
 <table>
     <thead><tr><th>Post</th><th>User</th><th>IP Hash</th><th>Content</th><th>Time</th><th>Actions</th></tr></thead>
     <tbody>

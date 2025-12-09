@@ -34,6 +34,7 @@ func (a *MockApplication) Challenges() *models.ChallengeStore { return a.challen
 func (a *MockApplication) Logger() *slog.Logger               { return a.logger }
 func (a *MockApplication) UploadDir() string                  { return a.uploadDir }
 func (a *MockApplication) BannerFile() string                 { return "./banner.txt" }
+func (a *MockApplication) DailySalt() string                  { return utils.GetDailySalt() }
 
 // setupTestApp creates a full application stack with a test database for integration testing.
 func setupTestApp(t *testing.T) *MockApplication {

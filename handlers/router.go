@@ -8,7 +8,6 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-// SetupRouter now accepts our Application struct and uses Chi router.
 func SetupRouter(app App) *chi.Mux {
 	mux := chi.NewRouter()
 
@@ -45,6 +44,7 @@ func SetupRouter(app App) *chi.Mux {
 		r.Get("/edit-board", MakeHandler(app, HandleEditBoard))
 		r.Post("/edit-board", MakeHandler(app, HandleEditBoard))
 		r.Post("/delete-board", MakeHandler(app, HandleDeleteBoard))
+		r.Post("/mass-delete", MakeHandler(app, HandleMassDelete))
 		r.Post("/manage-categories", MakeHandler(app, HandleManageCategories))
 		r.Get("/log", MakeHandler(app, HandleModLog))
 		r.Get("/banner", MakeHandler(app, HandleBanner))

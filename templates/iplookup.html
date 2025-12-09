@@ -1,4 +1,5 @@
 <h2>Post History for IP Hash: {{.IPHash}}</h2>
+<button type="button" class="button-danger js-mass-delete" data-hash="{{.IPHash}}" data-type="ip" data-csrf-token="{{$.csrfToken}}">Delete All Posts (Mass Nuke)</button>
 <table>
 <thead><tr><th>Post</th><th>User</th><th>Cookie Hash</th><th>Content</th><th>Time</th><th>Actions</th></tr></thead>
 <tbody>
