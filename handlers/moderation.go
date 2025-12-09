@@ -218,7 +218,7 @@ func HandleDeleteBoard(w http.ResponseWriter, r *http.Request, app App) {
 		return
 	}
 	modHash := utils.HashIP(utils.GetIPAddress(r))
-	if err := app.DB().DeleteBoard(boardID, app.UploadDir(), modHash); err != nil {
+	if err := app.DB().DeleteBoard(boardID, app.Storage(), modHash); err != nil {
 		logger.Error("Failed to delete board", "board_id", boardID, "error", err)
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to delete board: " + err.Error()}, app)
 		return
@@ -306,7 +306,7 @@ func HandleModDelete(w http.ResponseWriter, r *http.Request, app App) {
 	details := fmt.Sprintf("Deleted post %d", postID)
 
 	// Capture the boardID and isOp flag from the database operation.
-	boardID, isOp, err := app.DB().DeletePost(postID, app.UploadDir(), modHash, details)
+	boardID, isOp, err := app.DB().DeletePost(postID, app.Storage(), modHash, details)
 	if err != nil {
 		logger.Error("Mod failed to delete post", "post_id", postID, "error", err)
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to delete post."}, app)
@@ -733,8 +733,105 @@ func HandleCreateBoard(w http.ResponseWriter, r *http.Request, app App) {
 	}
 	app.DB().ClearBoardCache(id)
 	ClearBoardListCache()
-	logger.Info("Board created by moderator", "board_id", id, "name", name)
 	http.Redirect(w, r, "/mod/", http.StatusSeeOther)
+}
+
+func HandleManageFilters(w http.ResponseWriter, r *http.Request, app App) {
+	logger := app.Logger().With("handler", "HandleManageFilters")
+			if r.Method == http.MethodPost {
+				action := r.FormValue("form_action")
+				modHash := utils.HashIP(utils.GetIPAddress(r))
+	
+				tx, err := app.DB().DB.Begin()
+				if err != nil {
+					http.Error(w, "Database error", http.StatusInternalServerError)
+					return
+				}
+				defer func() {
+					if rerr := tx.Rollback(); rerr != nil && rerr != sql.ErrTxDone {
+						logger.Error("Failed to rollback transaction in HandleManageFilters", "error", rerr)
+					}
+				}()
+	
+				switch action {
+				case "add":
+					regex := r.FormValue("regex")
+					replacement := r.FormValue("replacement")
+					filterAction := r.FormValue("filter_action")
+	
+					if _, err := regexp.Compile(regex); err != nil {
+						http.Error(w, "Invalid Regex: "+err.Error(), http.StatusBadRequest)
+						return
+					}
+	
+					_, err = tx.Exec("INSERT INTO filters (regex, replacement, action, is_active, created_at) VALUES (?, ?, ?, 1, ?)", regex, replacement, filterAction, utils.GetSQLTime())
+					if err != nil {
+						logger.Error("Failed to add filter", "error", err)
+						http.Error(w, "Database error", http.StatusInternalServerError)
+						return
+					}
+					if err := database.LogModAction(tx, modHash, "add_filter", 0, regex); err != nil {
+						logger.Error("Failed to log add filter action", "error", err)
+						http.Error(w, "Database error", http.StatusInternalServerError)
+						return
+					}
+				case "delete":
+					idStr := r.FormValue("filter_id")
+					id, _ := strconv.ParseInt(idStr, 10, 64)
+					_, err := tx.Exec("DELETE FROM filters WHERE id = ?", id)
+					if err != nil {
+						logger.Error("Failed to delete filter", "error", err)
+						http.Error(w, "Database error", http.StatusInternalServerError)
+						return
+					}
+					if err := database.LogModAction(tx, modHash, "delete_filter", id, ""); err != nil {
+						logger.Error("Failed to log delete filter action", "error", err)
+						http.Error(w, "Database error", http.StatusInternalServerError)
+						return
+					}
+				default:
+					http.Error(w, "Invalid form action", http.StatusBadRequest)
+					return
+				}
+	
+				if err := tx.Commit(); err != nil {
+					logger.Error("Failed to commit filter changes", "error", err)
+					http.Error(w, "Database error", http.StatusInternalServerError)
+					return
+				}
+			if err := app.DB().ReloadFilters(); err != nil {
+			logger.Error("Failed to reload filters after change", "error", err)
+			// Not critical enough to return an HTTP error, but should be logged.
+		}
+		http.Redirect(w, r, "/mod/filters", http.StatusSeeOther)
+		return
+	}
+
+	rows, err := app.DB().DB.Query("SELECT id, regex, replacement, action, is_active FROM filters ORDER BY id DESC")
+	if err != nil {
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		return
+	}
+	defer func() {
+		if cerr := rows.Close(); cerr != nil {
+			app.Logger().Error("Failed to close filter rows in HandleManageFilters", "error", cerr)
+		}
+	}()
+
+	var filters []models.Filter
+	for rows.Next() {
+		var f models.Filter
+		if err := rows.Scan(&f.ID, &f.Regex, &f.Replacement, &f.Action, &f.IsActive); err != nil {
+			logger.Error("Failed to scan filter row", "error", err)
+			continue
+		}
+		filters = append(filters, f)
+	}
+
+	render(w, r, app, "mod_layout.html", "mod_filters.html", map[string]interface{}{
+		"Title":   "Manage Word Filters",
+		"Filters": filters,
+	})
 }
 
 func HandleModLog(w http.ResponseWriter, r *http.Request, app App) {
@@ -853,7 +950,7 @@ func HandleMassDelete(w http.ResponseWriter, r *http.Request, app App) {
 	}
 
 	modHash := utils.HashIP(utils.GetIPAddress(r))
-	count, err := app.DB().DeletePostsByHash(hash, hashType, app.UploadDir(), modHash)
+	count, err := app.DB().DeletePostsByHash(hash, hashType, app.Storage(), modHash)
 	if err != nil {
 		logger.Error("Failed to mass delete posts", "hash", hash, "type", hashType, "error", err)
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to delete posts: " + err.Error()}, app)

@@ -46,6 +46,8 @@ func SetupRouter(app App) *chi.Mux {
 		r.Post("/delete-board", MakeHandler(app, HandleDeleteBoard))
 		r.Post("/mass-delete", MakeHandler(app, HandleMassDelete))
 		r.Post("/manage-categories", MakeHandler(app, HandleManageCategories))
+		r.Get("/filters", MakeHandler(app, HandleManageFilters))
+		r.Post("/filters", MakeHandler(app, HandleManageFilters))
 		r.Get("/log", MakeHandler(app, HandleModLog))
 		r.Get("/banner", MakeHandler(app, HandleBanner))
 		r.Post("/banner", MakeHandler(app, HandleBanner))

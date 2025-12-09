@@ -3,7 +3,6 @@ package utils
 
 import (
 	"encoding/base64"
-	"log"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -52,7 +51,7 @@ func ReadBanner(bannerFile string) (string, error) {
 	content, err := os.ReadFile(bannerFile)
 	if err != nil {
 		// Can't use logger here as it's not available in all contexts
-		// log.Printf("ERROR: Could not read banner file %s: %v", bannerFile, err)
+		// slog.Error("Could not read banner file", "file", bannerFile, "error", err)
 		return "", err
 	}
 	return string(content), nil
@@ -69,7 +68,7 @@ func WriteBanner(bannerFile, content string) error {
 	}
 	err := os.WriteFile(bannerFile, []byte(content), 0644)
 	if err != nil {
-		log.Printf("ERROR: Could not write to banner file %s: %v", bannerFile, err)
+		slog.Error("Could not write to banner file", "file", bannerFile, "error", err)
 	}
 	return err
 }

@@ -1,4 +1,3 @@
-// yib/handlers/actions.go
 package handlers
 
 import (
@@ -8,15 +7,14 @@ import (
 	"encoding/hex"
 	"fmt"
 	"html/template"
-	"image"
-	_ "image/gif" // Import gif decoder
+	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
 	"io"
 	"log/slog"
 	"net/http"
 	"os"
-	"path/filepath"
+	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
@@ -56,20 +54,24 @@ func HandlePost(w http.ResponseWriter, r *http.Request, app App) {
 	cookieHash := utils.HashIP(cookieID)
 
 	if ban, isBanned := app.DB().GetBanDetails(ip, ipHash, cookieHash); isBanned {
-		// Auto-ban logic: 
+		// Auto-ban logic:
 		// 1. If user is banned by cookie, but IP is clean -> Ban IP (Evasion)
 		// 2. If user is banned by IP/CIDR, but cookie is clean -> Ban Cookie (Reverse Evasion)
-		
+
 		isIPBanned, _ := app.DB().IsHashBanned(ipHash, "ip")
 		if ban.BanType == "cookie" && !isIPBanned {
 			logger.Info("Auto-banning evasion IP", "ip_hash", ipHash, "original_reason", ban.Reason)
-			app.DB().CreateBan(ipHash, "ip", ban.Reason, "system", ban.ExpiresAt)
+			if cerr := app.DB().CreateBan(ipHash, "ip", ban.Reason, "system", ban.ExpiresAt); cerr != nil {
+				logger.Error("Failed to auto-ban evasion IP", "error", cerr)
+			}
 		}
 
 		isCookieBanned, _ := app.DB().IsHashBanned(cookieHash, "cookie")
 		if (ban.BanType == "ip" || ban.BanType == "cidr") && !isCookieBanned {
 			logger.Info("Auto-banning evasion cookie", "cookie_hash", cookieHash, "original_reason", ban.Reason)
-			app.DB().CreateBan(cookieHash, "cookie", ban.Reason, "system", ban.ExpiresAt)
+			if cerr := app.DB().CreateBan(cookieHash, "cookie", ban.Reason, "system", ban.ExpiresAt); cerr != nil {
+				logger.Error("Failed to auto-ban evasion cookie", "error", cerr)
+			}
 		}
 
 		expiryText := "This ban is permanent."
@@ -114,6 +116,54 @@ func HandlePost(w http.ResponseWriter, r *http.Request, app App) {
 		return
 	}
 
+	// Apply word filters to name
+	filteredName, err := app.DB().ApplyFilters(name)
+	if err != nil {
+		if err.Error() == "BAN_TRIGGERED" {
+			logger.Warn("User triggered auto-ban filter in name field", "ip", ip)
+			if cerr := app.DB().CreateBan(ipHash, "ip", "Triggered spam filter (auto-ban)", "system", sql.NullTime{Valid: true, Time: utils.GetSQLTime().Add(24 * time.Hour)}); cerr != nil {
+				logger.Error("Failed to auto-ban filter triggered IP", "error", cerr)
+			}
+			respondJSON(w, http.StatusForbidden, map[string]string{"error": "You have been banned for posting restricted content."}, app)
+			return
+		}
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Name: " + err.Error()}, app)
+		return
+	}
+	name = filteredName
+
+	// Apply word filters to subject
+	filteredSubject, err := app.DB().ApplyFilters(subject)
+	if err != nil {
+		if err.Error() == "BAN_TRIGGERED" {
+			logger.Warn("User triggered auto-ban filter in subject field", "ip", ip)
+			if cerr := app.DB().CreateBan(ipHash, "ip", "Triggered spam filter (auto-ban)", "system", sql.NullTime{Valid: true, Time: utils.GetSQLTime().Add(24 * time.Hour)}); cerr != nil {
+				logger.Error("Failed to auto-ban filter triggered IP", "error", cerr)
+			}
+			respondJSON(w, http.StatusForbidden, map[string]string{"error": "You have been banned for posting restricted content."}, app)
+			return
+		}
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Subject: " + err.Error()}, app)
+		return
+	}
+	subject = filteredSubject
+
+	// Apply word filters to content
+	filteredContent, err := app.DB().ApplyFilters(content)
+	if err != nil {
+		if err.Error() == "BAN_TRIGGERED" {
+			logger.Warn("User triggered auto-ban filter", "ip", ip)
+			if cerr := app.DB().CreateBan(ipHash, "ip", "Triggered spam filter (auto-ban)", "system", sql.NullTime{Valid: true, Time: utils.GetSQLTime().Add(24 * time.Hour)}); cerr != nil {
+				logger.Error("Failed to auto-ban filter triggered IP", "error", cerr)
+			}
+			respondJSON(w, http.StatusForbidden, map[string]string{"error": "You have been banned for posting restricted content."}, app)
+			return
+		}
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()}, app)
+		return
+	}
+	content = filteredContent
+
 	// processImage now returns thumbnail path as well
 	imagePath, thumbPath, imageHash, hasImage, err := processImage(r, app, logger)
 	if err != nil {
@@ -143,12 +193,13 @@ func HandlePost(w http.ResponseWriter, r *http.Request, app App) {
 
 	var newPostID int64
 	var redirectURL string
+	var res sql.Result
 	if threadIDStr == "" || threadIDStr == "0" { // New thread
 		if boardConfig.ImageRequired && !hasImage {
 			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Image required for new threads on this board."}, app)
 			return
 		}
-		res, err := tx.Exec("INSERT INTO threads (board_id, subject, bump, reply_count, image_count) VALUES (?, ?, ?, 0, ?)", boardID, subject, utils.GetSQLTime(), utils.BtoI(hasImage))
+		res, err = tx.Exec("INSERT INTO threads (board_id, subject, bump, reply_count, image_count) VALUES (?, ?, ?, 0, ?)", boardID, subject, utils.GetSQLTime(), utils.BtoI(hasImage))
 		if err != nil {
 			logger.Error("Failed to insert new thread", "error", err)
 			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Database error creating thread."}, app)
@@ -181,10 +232,11 @@ func HandlePost(w http.ResponseWriter, r *http.Request, app App) {
 			return
 		}
 		// Insert new columns
-		res, err := tx.Exec(`
+		res, err = tx.Exec(`
 			INSERT INTO posts (board_id, thread_id, name, tripcode, content, image_path, thumbnail_path, image_hash, timestamp, ip_hash, cookie_hash, is_moderator)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			boardID, threadID, displayName, tripcode, processContent(content), imagePath, thumbPath, imageHash, utils.GetSQLTime(), ipHash, cookieHash, isModerator)
+
 		if err != nil {
 			logger.Error("Failed to insert reply", "error", err)
 			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Database error creating reply."}, app)
@@ -261,7 +313,7 @@ func HandleCookieDelete(w http.ResponseWriter, r *http.Request, app App) {
 	}
 
 	// Capture the isOp flag from the database operation.
-	_, isOp, err := app.DB().DeletePost(postID, app.UploadDir(), "", "")
+	_, isOp, err := app.DB().DeletePost(postID, app.Storage(), "", "")
 	if err != nil {
 		logger.Error("Failed to delete post by user request", "post_id", postID, "error", err)
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to delete post."}, app)
@@ -345,12 +397,16 @@ func processImage(r *http.Request, app App, logger *slog.Logger) (string, sql.Nu
 
 	// Magic byte validation
 	contentType := http.DetectContentType(data)
-	allowedTypes := map[string]bool{
+	allowedImages := map[string]bool{
 		"image/jpeg": true, "image/png": true, "image/gif": true, "image/webp": true,
 	}
-	if !allowedTypes[contentType] {
+	allowedVideos := map[string]bool{
+		"video/webm": true, "video/mp4": true,
+	}
+
+	if !allowedImages[contentType] && !allowedVideos[contentType] {
 		logger.Warn("User uploaded file with invalid MIME type", "detected_type", contentType, "filename", header.Filename)
-		return "", sql.NullString{}, "", true, fmt.Errorf("unsupported file type: %s. Only JPG, PNG, GIF, and WebP are allowed", contentType)
+		return "", sql.NullString{}, "", true, fmt.Errorf("unsupported file type: %s. Only JPG, PNG, GIF, WebP, WebM, and MP4 are allowed", contentType)
 	}
 
 	hash := sha256.Sum256(data)
@@ -365,82 +421,91 @@ func processImage(r *http.Request, app App, logger *slog.Logger) (string, sql.Nu
 		logger.Error("Failed to check for existing image hash", "error", err)
 	}
 
-	reader := bytes.NewReader(data)
-	cfg, format, err := image.DecodeConfig(reader)
-	if err != nil {
-		return "", sql.NullString{}, "", true, fmt.Errorf("invalid image format, could not decode config: %w", err)
-	}
-	if cfg.Width > config.MaxWidth || cfg.Height > config.MaxHeight {
-		return "", sql.NullString{}, "", true, fmt.Errorf("image dimensions (%dx%d) exceed maximum (%dx%d)", cfg.Width, cfg.Height, config.MaxWidth, config.MaxHeight)
-	}
-	if _, err := reader.Seek(0, 0); err != nil {
-		return "", sql.NullString{}, "", true, fmt.Errorf("could not reset reader position: %w", err)
-	}
-
-	// Re-decode the full image for processing
-	img, err := imaging.Decode(reader, imaging.AutoOrientation(true))
-	if err != nil {
-		return "", sql.NullString{}, "", true, fmt.Errorf("failed to decode image with orientation correction: %w", err)
-	}
-
-	// --- Save Main Image (Re-encoded) ---
-	// Non-animated GIFs are converted to JPEG for consistency and size.
-	outputFormat := "jpeg"
-	if format == "png" {
-		outputFormat = "png"
+	// Determine output filename
+	var ext string
+	switch contentType {
+	case "image/jpeg":
+		ext = ".jpeg"
+	case "image/png":
+		ext = ".png"
+	case "image/gif":
+		ext = ".gif"
+	case "image/webp":
+		ext = ".webp"
+	case "video/webm":
+		ext = ".webm"
+	case "video/mp4":
+		ext = ".mp4"
 	}
 
-	mainFilename := fmt.Sprintf("%d_%s.%s", utils.GetTime().UnixNano(), hashStr[:12], outputFormat)
-	mainOutputPath := filepath.Join(app.UploadDir(), mainFilename)
-	out, err := os.Create(mainOutputPath)
-	if err != nil {
-		return "", sql.NullString{}, "", true, fmt.Errorf("could not create main image file: %w", err)
-	}
-	defer func() {
-		if err := out.Close(); err != nil {
-			logger.Error("Failed to close main image file", "path", mainOutputPath, "error", err)
+	mainFilename := fmt.Sprintf("%d_%s%s", utils.GetTime().UnixNano(), hashStr[:12], ext)
+	thumbFilename := fmt.Sprintf("%d_%s_thumb.jpeg", utils.GetTime().UnixNano(), hashStr[:12])
+
+	var thumbData []byte
+
+	// Processing
+	if allowedVideos[contentType] {
+		tempMain, err := os.CreateTemp("", "yib-vid-*"+ext)
+		if err != nil {
+			 return "", sql.NullString{}, "", true, err
 		}
-	}()
+		defer func() {
+			if rerr := os.Remove(tempMain.Name()); rerr != nil {
+				logger.Error("Failed to remove temporary main file", "path", tempMain.Name(), "error", rerr)
+			}
+		}()
+		if _, werr := tempMain.Write(data); werr != nil {
+			logger.Error("Failed to write to temporary main file", "path", tempMain.Name(), "error", werr)
+		}
+		if cerr := tempMain.Close(); cerr != nil {
+			logger.Error("Failed to close temporary main file", "path", tempMain.Name(), "error", cerr)
+		}
 
-	// Encode and save the main image
-	if outputFormat == "png" {
-		err = imaging.Encode(out, img, imaging.PNG)
+		tempThumb := tempMain.Name() + "_thumb.jpg"
+		defer func() {
+			if rerr := os.Remove(tempThumb); rerr != nil {
+				logger.Error("Failed to remove temporary thumbnail file", "path", tempThumb, "error", rerr)
+			}
+		}()
+
+		// ffmpeg
+		cmd := exec.Command("ffmpeg", "-y", "-i", tempMain.Name(), "-ss", "00:00:00.000", "-vframes", "1", "-vf", fmt.Sprintf("scale=%d:-1", config.ThumbnailWidth), tempThumb)
+		if err := cmd.Run(); err == nil {
+			thumbData, _ = os.ReadFile(tempThumb)
+		} else {
+			logger.Error("ffmpeg failed", "error", err)
+		}
 	} else {
-		err = imaging.Encode(out, img, imaging.JPEG, imaging.JPEGQuality(90))
-	}
-	if err != nil {
-		if removeErr := os.Remove(mainOutputPath); removeErr != nil {
-			logger.Error("Failed to remove failed main image file", "path", mainOutputPath, "error", removeErr)
+		// Image
+		reader := bytes.NewReader(data)
+		img, err := imaging.Decode(reader, imaging.AutoOrientation(true))
+		if err == nil {
+			thumb := imaging.Fit(img, config.ThumbnailWidth, config.ThumbnailHeight, imaging.Lanczos)
+			var buf bytes.Buffer
+			if err := imaging.Encode(&buf, thumb, imaging.JPEG, imaging.JPEGQuality(85)); err == nil {
+				thumbData = buf.Bytes()
+			}
+		} else {
+			logger.Error("Failed to decode image for thumbnail", "error", err)
 		}
-		return "", sql.NullString{}, "", true, fmt.Errorf("failed to encode main image: %w", err)
 	}
-	mainPath := "/uploads/" + mainFilename
 
-	// Create a thumbnail, preserving aspect ratio.
-	thumb := imaging.Fit(img, config.ThumbnailWidth, config.ThumbnailHeight, imaging.Lanczos)
-	thumbFilename := fmt.Sprintf("%s_thumb.jpeg", mainFilename[:len(mainFilename)-len(filepath.Ext(mainFilename))])
-	thumbOutputPath := filepath.Join(app.UploadDir(), thumbFilename)
-	thumbOut, err := os.Create(thumbOutputPath)
+	// Upload Main
+	mainPath, err := app.Storage().SaveFile(mainFilename, data, contentType)
 	if err != nil {
-		logger.Error("Could not create thumbnail file", "error", err)
-		// Don't fail the entire post if thumbnailing fails, just proceed without it.
-		return mainPath, sql.NullString{}, hashStr, true, nil
+		return "", sql.NullString{}, "", true, fmt.Errorf("failed to save file: %w", err)
 	}
-	defer func() {
-		if err := thumbOut.Close(); err != nil {
-			logger.Error("Failed to close thumbnail file", "path", thumbOutputPath, "error", err)
-		}
-	}()
 
-	if err := imaging.Encode(thumbOut, thumb, imaging.JPEG, imaging.JPEGQuality(85)); err != nil {
-		logger.Error("Failed to encode thumbnail", "error", err)
-		// cleanup failed file
-		if removeErr := os.Remove(thumbOutputPath); removeErr != nil {
-			logger.Error("Failed to remove failed thumbnail file", "path", thumbOutputPath, "error", removeErr)
+	// Upload Thumb
+	var thumbPath sql.NullString
+	if len(thumbData) > 0 {
+		tPath, err := app.Storage().SaveFile(thumbFilename, thumbData, "image/jpeg")
+		if err == nil {
+			thumbPath = sql.NullString{String: tPath, Valid: true}
+		} else {
+			logger.Error("Failed to save thumbnail", "error", err)
 		}
-		return mainPath, sql.NullString{}, hashStr, true, nil
 	}
-	thumbPath := sql.NullString{String: "/uploads/" + thumbFilename, Valid: true}
 
 	return mainPath, thumbPath, hashStr, true, nil
 }
@@ -467,16 +532,16 @@ func processContent(content string) string {
 // Precompiled regex patterns for text processing
 var (
 	// Markdown formatting patterns
-	reSpoiler         = regexp.MustCompile(`\|\|([^|]+?)\|\|`)
-	reStrike          = regexp.MustCompile(`~~([^~]+?)~~`)
-	reBoldAsterisk    = regexp.MustCompile(`\*\*([^*]+?)\*\*`)
-	reUnderscore      = regexp.MustCompile(`__([^_]+?)__`)
-	reItalicAsterisk  = regexp.MustCompile(`\*([^*]+?)\*`)
+	reSpoiler          = regexp.MustCompile(`\|\|([^|]+?)\|\|`)
+	reStrike           = regexp.MustCompile(`~~([^~]+?)~~`)
+	reBoldAsterisk     = regexp.MustCompile(`\*\*([^*]+?)\*\*`)
+	reUnderscore       = regexp.MustCompile(`__([^_]+?)__`)
+	reItalicAsterisk   = regexp.MustCompile(`\*([^*]+?)\*`)
 	reItalicUnderscore = regexp.MustCompile(`_([^_]+?)_`)
-	
+
 	// Post processing patterns
-	reBacklinks   = regexp.MustCompile(`>>(\d+)`)
-	reQuoteLinks  = regexp.MustCompile(`&gt;&gt;(\d+)`)
+	reBacklinks  = regexp.MustCompile(`>>(\d+)`)
+	reQuoteLinks = regexp.MustCompile(`&gt;&gt;(\d+)`)
 )
 
 // applyMarkdownFormatting processes markdown-style formatting

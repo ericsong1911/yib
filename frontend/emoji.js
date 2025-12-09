@@ -44,7 +44,7 @@ export function initEmojiPicker() {
         e.stopPropagation();
         if (picker.style.display === 'none') {
             picker.style.display = 'grid';
-            picker.style.gridTemplateColumns = 'repeat(10, 1fr)';
+            picker.style.gridTemplateColumns = 'repeat(auto-fill, minmax(30px, 1fr))';
             picker.style.gap = '5px';
             picker.style.position = 'absolute';
             picker.style.backgroundColor = 'var(--bg-color, #fff)';

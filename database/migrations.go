@@ -21,9 +21,17 @@ CREATE INDEX IF NOT EXISTS idx_posts_is_moderator ON posts(is_moderator);
 CREATE INDEX IF NOT EXISTS idx_threads_board_id ON threads(board_id);
 		`,
 	},
-	// Future migrations will be added here, e.g.:
-	// {
-	// 	Version: 2,
-	// 	Query: `ALTER TABLE boards ADD COLUMN new_feature_flag BOOLEAN DEFAULT 0;`,
-	// },
+	{
+		Version: 2,
+		Query: `
+		CREATE TABLE IF NOT EXISTS filters (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			regex TEXT NOT NULL,
+			replacement TEXT,
+			action TEXT NOT NULL,
+			is_active BOOLEAN DEFAULT 1,
+			created_at DATETIME
+		);
+		`,
+	},
 }

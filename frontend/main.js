@@ -44,18 +44,36 @@ async function refreshContent() {
     }
 }
 
+function updateCountdownDisplay() {
+    const el = document.getElementById('auto-refresh-countdown');
+    if (el) el.textContent = `[${state.refreshCountdownValue}]`;
+}
+
 function startAutoRefresh() {
     stopAutoRefresh();
     const intervalInput = document.getElementById('auto-refresh-interval');
     let intervalSeconds = parseInt(intervalInput.value, 10);
     if (isNaN(intervalSeconds) || intervalSeconds < 10) intervalSeconds = 10;
     intervalInput.value = intervalSeconds;
-    state.autoRefreshTimer = setInterval(refreshContent, intervalSeconds * 1000);
+    
+    state.refreshCountdownValue = intervalSeconds;
+    updateCountdownDisplay();
+
+    state.autoRefreshTimer = setInterval(() => {
+        state.refreshCountdownValue--;
+        updateCountdownDisplay();
+        if (state.refreshCountdownValue <= 0) {
+            refreshContent();
+            state.refreshCountdownValue = intervalSeconds;
+        }
+    }, 1000);
 }
 
 function stopAutoRefresh() {
     clearInterval(state.autoRefreshTimer);
     state.autoRefreshTimer = null;
+    const el = document.getElementById('auto-refresh-countdown');
+    if (el) el.textContent = '';
 }
 
 // --- UNIFIED API HANDLER ---
@@ -220,6 +238,11 @@ function handleGlobalClick(e) {
     if (target.classList.contains('postImg') && target.closest('a')) {
         e.preventDefault();
         toggleImageSize(target);
+    } else if (target.closest('.fileText') && target.tagName === 'A') {
+        e.preventDefault();
+        const fileDiv = target.closest('.file');
+        const img = fileDiv.querySelector('.postImg');
+        if (img) toggleImageSize(img);
     } else if (target.classList.contains('hide-thread-link')) {
         e.preventDefault();
         toggleThreadVisibility(document.body.dataset.boardId, target.dataset.threadId);

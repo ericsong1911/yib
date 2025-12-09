@@ -6,7 +6,6 @@ import (
 	"crypto/subtle"
 	"database/sql"
 	"encoding/json"
-	"log"
 	"log/slog"
 	"math"
 	"net/http"
@@ -28,7 +27,8 @@ type App interface {
 	RateLimiter() *models.RateLimiter
 	Challenges() *models.ChallengeStore
 	Logger() *slog.Logger
-	UploadDir() string
+	UploadDir() string // Deprecated-ish, but used by LocalStorage
+	Storage() models.StorageService
 	BannerFile() string
 	DailySalt() string
 }
@@ -305,14 +305,14 @@ func HandleCatalog(w http.ResponseWriter, r *http.Request, app App, boardConfig 
 
 	threads, err := app.DB().GetThreadsForBoard(boardConfig.ID, false, page, pageSize, false, app.DailySalt())
 	if err != nil {
-		log.Printf("ERROR: DB error getting catalog for /%s/: %v", boardConfig.ID, err)
+		app.Logger().Error("DB error getting catalog", "board_id", boardConfig.ID, "error", err)
 		http.Error(w, "Database error loading catalog.", 500)
 		return
 	}
 
 	totalThreads, err := app.DB().GetThreadCount(boardConfig.ID, false)
 	if err != nil {
-		log.Printf("ERROR: DB error getting thread count for /%s/ catalog: %v", boardConfig.ID, err)
+		app.Logger().Error("DB error getting thread count for catalog", "board_id", boardConfig.ID, "error", err)
 	}
 	totalPages := int(math.Ceil(float64(totalThreads) / float64(pageSize)))
 
@@ -337,14 +337,14 @@ func HandleArchive(w http.ResponseWriter, r *http.Request, app App, boardConfig 
 
 	threads, err := app.DB().GetThreadsForBoard(boardConfig.ID, true, page, pageSize, false, app.DailySalt())
 	if err != nil {
-		log.Printf("ERROR: DB error getting archive for /%s/: %v", boardConfig.ID, err)
+		app.Logger().Error("DB error getting archive", "board_id", boardConfig.ID, "error", err)
 		http.Error(w, "Database error loading archive.", 500)
 		return
 	}
 
 	totalThreads, err := app.DB().GetThreadCount(boardConfig.ID, true)
 	if err != nil {
-		log.Printf("ERROR: DB error getting thread count for /%s/ archive: %v", boardConfig.ID, err)
+		app.Logger().Error("DB error getting thread count for archive", "board_id", boardConfig.ID, "error", err)
 	}
 	totalPages := int(math.Ceil(float64(totalThreads) / float64(pageSize)))
 
@@ -374,21 +374,21 @@ func HandleThread(w http.ResponseWriter, r *http.Request, app App, boardConfig *
 			http.NotFound(w, r)
 			return
 		}
-		log.Printf("ERROR: DB error getting thread %d for /%s/: %v", threadID, boardConfig.ID, err)
+		app.Logger().Error("DB error getting thread", "thread_id", threadID, "board_id", boardConfig.ID, "error", err)
 		http.Error(w, "Database error loading thread.", 500)
 		return
 	}
 
 	thread.Posts, err = app.DB().GetPostsForThread(threadID, app.DailySalt())
 	if err != nil {
-		log.Printf("ERROR: DB error getting posts for thread %d: %v", threadID, err)
+		app.Logger().Error("DB error getting posts for thread", "thread_id", threadID, "error", err)
 		http.Error(w, "Database error loading posts.", 500)
 		return
 	}
 	if len(thread.Posts) > 0 {
 		thread.Posts[0].Subject = thread.Subject
 	} else {
-		log.Printf("ERROR: Thread %d has no posts, which should be impossible.", threadID)
+		app.Logger().Error("Thread has no posts, which should be impossible", "thread_id", threadID)
 		http.Error(w, "Data consistency error: thread has no posts.", 500)
 		return
 	}
@@ -419,7 +419,7 @@ func HandlePostPreview(w http.ResponseWriter, r *http.Request, app App) {
 			http.NotFound(w, r)
 			return
 		}
-		log.Printf("Error fetching post for preview %d: %v", postID, err)
+		app.Logger().Error("Error fetching post for preview", "post_id", postID, "error", err)
 		http.Error(w, "Database error", http.StatusInternalServerError)
 		return
 	}
@@ -435,7 +435,7 @@ func HandlePostPreview(w http.ResponseWriter, r *http.Request, app App) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	err = templates.ExecuteTemplate(w, "post", data)
 	if err != nil {
-		log.Printf("Error rendering post preview template for post %d: %v", postID, err)
+		app.Logger().Error("Error rendering post preview template", "post_id", postID, "error", err)
 	}
 }
 
@@ -455,7 +455,7 @@ func HandleSearch(w http.ResponseWriter, r *http.Request, app App) {
 
 	rows, err := app.DB().DB.Query("SELECT id, name FROM boards WHERE archived = 0 ORDER BY id")
 	if err != nil {
-		log.Printf("ERROR: Failed to query boards for search page: %v", err)
+		app.Logger().Error("Failed to query boards for search page", "error", err)
 	}
 
 	type BoardEntry struct{ ID, Name string }
@@ -469,13 +469,13 @@ func HandleSearch(w http.ResponseWriter, r *http.Request, app App) {
 		for rows.Next() {
 			var be BoardEntry
 			if err := rows.Scan(&be.ID, &be.Name); err != nil {
-				log.Printf("ERROR: Failed to scan board for search dropdown: %v", err)
+				app.Logger().Error("Failed to scan board for search dropdown", "error", err)
 			} else {
 				boards = append(boards, be)
 			}
 		}
 		if err := rows.Err(); err != nil {
-			log.Printf("ERROR: Row error scanning boards for search: %v", err)
+			app.Logger().Error("Row error scanning boards for search", "error", err)
 		}
 	}
 
@@ -490,7 +490,7 @@ func HandleSearch(w http.ResponseWriter, r *http.Request, app App) {
 }
 
 // handleBoardLogin serves the password prompt for protected boards.
-func handleBoardLogin(w http.ResponseWriter, r *http.Request, _ App, boardConfig *models.BoardConfig) {
+func handleBoardLogin(w http.ResponseWriter, r *http.Request, app App, boardConfig *models.BoardConfig) {
 	loginError := false
 	if r.Method == http.MethodPost {
 		password := r.FormValue("password")
@@ -510,7 +510,7 @@ func handleBoardLogin(w http.ResponseWriter, r *http.Request, _ App, boardConfig
 			return
 		}
 		if err != bcrypt.ErrMismatchedHashAndPassword {
-			log.Printf("ERROR: Bcrypt error comparing hash for board /%s/: %v", boardConfig.ID, err)
+			app.Logger().Error("Bcrypt error comparing hash for board", "board_id", boardConfig.ID, "error", err)
 		}
 		loginError = true
 	}
@@ -524,7 +524,7 @@ func handleBoardLogin(w http.ResponseWriter, r *http.Request, _ App, boardConfig
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := templates.ExecuteTemplate(w, "login.html", data); err != nil {
-		log.Printf("Error rendering login template: %v", err)
+		app.Logger().Error("Error rendering login template", "error", err)
 	}
 }
 

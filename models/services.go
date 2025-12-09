@@ -115,3 +115,12 @@ func (cs *ChallengeStore) Verify(token, answer string) bool {
 
 	return subtle.ConstantTimeCompare([]byte(answer), []byte(correctAnswer)) == 1
 }
+
+// --- Storage Service Interface ---
+
+type StorageService interface {
+	// SaveFile saves data to storage and returns the public URL/path.
+	SaveFile(filename string, data []byte, contentType string) (string, error)
+	// DeleteFile deletes a file from storage using the stored URL/path.
+	DeleteFile(path string) error
+}

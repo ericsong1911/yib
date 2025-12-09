@@ -26,6 +26,7 @@ type MockApplication struct {
 	challenges  *models.ChallengeStore
 	uploadDir   string
 	logger      *slog.Logger
+	storage     models.StorageService
 }
 
 func (a *MockApplication) DB() *database.DatabaseService      { return a.db }
@@ -35,6 +36,7 @@ func (a *MockApplication) Logger() *slog.Logger               { return a.logger 
 func (a *MockApplication) UploadDir() string                  { return a.uploadDir }
 func (a *MockApplication) BannerFile() string                 { return "./banner.txt" }
 func (a *MockApplication) DailySalt() string                  { return utils.GetDailySalt() }
+func (a *MockApplication) Storage() models.StorageService     { return a.storage }
 
 // setupTestApp creates a full application stack with a test database for integration testing.
 func setupTestApp(t *testing.T) *MockApplication {
@@ -70,6 +72,7 @@ func setupTestApp(t *testing.T) *MockApplication {
 		challenges:  models.NewChallengeStore(),
 		uploadDir:   uploadDir,
 		logger:      logger,
+		storage:     &utils.LocalStorage{UploadDir: uploadDir},
 	}
 
 	utils.IPSalt = "test-salt"

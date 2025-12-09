@@ -68,6 +68,14 @@ CREATE TABLE IF NOT EXISTS mod_actions (
     target_id INTEGER,
     details TEXT
 );
+CREATE TABLE IF NOT EXISTS filters (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	regex TEXT NOT NULL,
+	replacement TEXT,
+	action TEXT NOT NULL, -- 'replace', 'block', 'ban'
+	is_active BOOLEAN DEFAULT 1,
+	created_at DATETIME
+);
 -- New FTS5 table for fast searching
 CREATE VIRTUAL TABLE IF NOT EXISTS posts_fts USING fts5(
     subject,

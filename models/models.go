@@ -117,3 +117,12 @@ type ModAction struct {
 	TargetID      sql.NullInt64
 	Details       sql.NullString
 }
+
+type Filter struct {
+	ID          int64
+	Regex       string
+	Replacement string
+	Action      string // 'replace', 'block', 'ban'
+	IsActive    bool
+	CreatedAt   time.Time
+}

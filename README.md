@@ -19,36 +19,47 @@ A classic-style, self-hosted imageboard project built with Go. `yib` is designed
 
 ### User Features
 *   **Classic Board/Thread/Reply Structure:** Familiar and intuitive imageboard layout.
-*   **Image & WebP Support:** Upload JPG, PNG, GIF, and WebP files.
-*   **Tripcodes:** Secure identitfication for anonymous users.
+*   **Rich Media Support:** Upload JPG, PNG, GIF, WebP images, and **WebM/MP4 videos** with automatic thumbnail generation.
+*   **Thread-Specific User IDs:** Unique, daily-rotating IDs per thread to track conversations while maintaining anonymity.
+*   **Tripcodes:** Secure identification for anonymous users.
 *   **Post Management:** Users can delete their own posts.
 *   **Fast, Full-Text Search:** Powered by SQLite FTS5 for instant results.
 *   **Post Previews:** Hover over a `>>` backlink to preview the post.
+*   **Emoji Selector:** Built-in picker for adding emojis to posts.
 *   **Customization:** Multiple color schemes and client-side thread hiding.
+*   **Auto-Refresh:** Live countdown timer with configurable refresh interval.
 *   **Protected Boards:** Boards can be password-protected.
 
 ### Moderation & Admin Features
 A comprehensive moderation panel accessible only from the local network by default.
 *   **Dashboard:** View recent posts and active reports at a glance.
+*   **Advanced Banning:** 
+    *   Ban by IP, Cookie Hash, or **CIDR Range**.
+    *   **Auto-Ban Evasion:** Automatically bans new IPs if a banned cookie is detected (and vice-versa).
+*   **Mass Deletion (Nuke):** Instantly delete all posts from a specific IP or Cookie hash.
+*   **Word Filters & Spam Blocking:** Regex-based filters to automatically block, replace, or ban users based on content.
 *   **Post & Thread Management:** Delete any post, lock threads, and sticky threads.
-*   **User Management:** Ban users by IP hash and/or cookie hash (temporary or permanent).
 *   **Auditing:** Look up a user's entire post history by their IP or cookie hash. A persistent log records all moderator actions.
 *   **Database Backups:** Create live, on-demand database backups directly from the moderation panel.
 *   **Board & Category Management:** Create, edit, and delete boards and categories on the fly.
 *   **Global Banner:** Post a site-wide announcement banner.
 
 ### Technical Features
+*   **Object Storage (S3):** Optional support for S3-compatible storage (AWS, MinIO, Cloudflare R2) for handling uploads.
 *   **Secure by Default:** Built-in CSRF protection, strict CSP headers, automatic XSS prevention, secure upload file handling, and salted IP/cookie hashing.
-*   **Performance:** Automatic thumbnail generation to preserve bandwidth, smart batch-querying database logic to avoid N+1 problems.
-*   **Maintainable & Robust:** Structured JSON-formatted logging for debugging and monitoring, automated test suite to ensure code stability, database migration system to handle schema changes.
-*   **Self-Contained:** Single binary executable with no external runtime dependencies.
-*   **Configurable:** Key settings like port and database path can be configured via environment variables.
+*   **Performance:** Automatic thumbnail generation (using `ffmpeg` for video), smart batch-querying database logic.
+*   **Maintainable & Robust:** Structured JSON-formatted logging, automated test suite, database migration system.
+*   **Self-Contained:** Single binary executable.
+*   **Configurable:** Key settings like port, database path, and storage backend configured via environment variables.
 
 ---
 
 ## Getting Started
 
 You can run `yib` either by downloading a pre-compiled release or by building from source.
+
+### Prerequisites
+*   **FFmpeg:** Required for video thumbnail generation. Ensure `ffmpeg` is installed and in your system PATH.
 
 ### Option 1: From a Release (Recommended)
 
@@ -97,13 +108,29 @@ You will need Git and the Go toolchain (version 1.21 or later) installed.
 
 `yib` can be configured using environment variables.
 
+### Core Settings
 | Variable        | Description                              | Default                                         |
 | --------------- | ---------------------------------------- | ----------------------------------------------- |
 | `YIB_PORT`      | The port for the web server to listen on.| `8080`                                          |
 | `YIB_DB_PATH`   | The path to the SQLite database file.    | `./yalie.db?_journal_mode=WAL&_foreign_keys=on` |
 | `YIB_BACKUP_DIR`| The directory to store database backups. | `./backups`                                     |
 
-#### Rate Limiter Configuration
+### Object Storage (S3)
+If enabled, uploads will be stored in the configured S3 bucket.
+*Note: Existing local files are not automatically migrated if you switch to S3.*
+
+| Variable              | Description                                      | Default |
+| --------------------- | ------------------------------------------------ | ------- |
+| `YIB_S3_ENABLED`      | Set to `true` to enable S3 storage.              | `false` |
+| `YIB_S3_ENDPOINT`     | The S3 endpoint (e.g., `s3.amazonaws.com` or `play.min.io`). | -       |
+| `YIB_S3_REGION`       | The S3 region (e.g., `us-east-1`).               | `us-east-1` |
+| `YIB_S3_BUCKET`       | The name of the S3 bucket.                       | -       |
+| `YIB_S3_ACCESS_KEY`   | Your S3 Access Key ID.                           | -       |
+| `YIB_S3_SECRET_KEY`   | Your S3 Secret Access Key.                       | -       |
+| `YIB_S3_PUBLIC_URL`   | Optional custom public URL (e.g., CDN domain).   | (Auto)  |
+| `YIB_S3_USE_SSL`      | Set to `false` to disable SSL (useful for local MinIO). | `true`  |
+
+### Rate Limiter
 | Variable         | Description                                                            | Default          |
 | ---------------- | ---------------------------------------------------------------------- | ---------------- |
 | `YIB_RATE_EVERY` | The time duration between allowed bursts of posts (e.g., "30s", "1m"). | `30s`            |
@@ -112,9 +139,15 @@ You will need Git and the Go toolchain (version 1.21 or later) installed.
 | `YIB_RATE_EXPIRE`| How long an inactive user is kept in the rate limiter before pruning.  | `24h`            |
 
 
-**Example:**
+**Example (S3):**
 ```bash
-YIB_PORT=8888 YIB_DB_PATH=/var/data/myboard.db YIB_BACKUP_DIR=/var/backups ./yib
+export YIB_S3_ENABLED=true
+export YIB_S3_ENDPOINT=nyc3.digitaloceanspaces.com
+export YIB_S3_REGION=nyc3
+export YIB_S3_BUCKET=my-imageboard
+export YIB_S3_ACCESS_KEY=EXAMPLEKEY
+export YIB_S3_SECRET_KEY=EXAMPLESECRET
+./yib
 ```
 
 ## License

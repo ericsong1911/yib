@@ -1,0 +1,59 @@
+<h2>Manage Word Filters</h2>
+
+<p>Add regular expressions to automatically block, replace, or ban users for specific content.</p>
+
+<form action="/mod/filters" method="post" class="mod-dashboard-form">
+    <input type="hidden" name="csrf_token" value="{{.csrfToken}}">
+    <input type="hidden" name="form_action" value="add">
+    
+    <div class="mod-form-row">
+        Regex: <input type="text" name="regex" placeholder="e.g. (buy|sell) crypto" required>
+    </div>
+    <div class="mod-form-row">
+        Action:
+        <select name="filter_action" id="filter-action-select">
+            <option value="block">Block Post (Show Error)</option>
+            <option value="replace">Replace Match</option>
+            <option value="ban">Auto-Ban User (24h)</option>
+        </select>
+    </div>
+    <div class="mod-form-row" id="replacement-row" style="display:none;">
+        Replacement: <input type="text" name="replacement" placeholder="e.g. [REDACTED]">
+    </div>
+    
+    <input type="submit" value="Add Filter" class="button-primary">
+</form>
+
+<script>
+    document.getElementById('filter-action-select').addEventListener('change', function() {
+        document.getElementById('replacement-row').style.display = this.value === 'replace' ? 'block' : 'none';
+    });
+</script>
+
+<hr>
+
+<h3>Active Filters</h3>
+<table>
+    <thead><tr><th>ID</th><th>Regex</th><th>Action</th><th>Replacement</th><th>Active</th><th>Manage</th></tr></thead>
+    <tbody>
+    {{range .Filters}}
+    <tr>
+        <td>{{.ID}}</td>
+        <td><code>{{.Regex}}</code></td>
+        <td>{{.Action}}</td>
+        <td>{{if eq .Action "replace"}}<code>{{.Replacement}}</code>{{else}}-{{end}}</td>
+        <td>{{if .IsActive}}Yes{{else}}No{{end}}</td>
+        <td>
+            <form action="/mod/filters" method="post" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{$.csrfToken}}">
+                <input type="hidden" name="form_action" value="delete">
+                <input type="hidden" name="filter_id" value="{{.ID}}">
+                <input type="submit" value="Delete" class="button-danger">
+            </form>
+        </td>
+    </tr>
+    {{else}}
+    <tr><td colspan="6">No active filters.</td></tr>
+    {{end}}
+    </tbody>
+</table>

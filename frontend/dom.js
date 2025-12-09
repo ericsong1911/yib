@@ -65,10 +65,25 @@ export function toggleImageSize(img) {
         return;
     }
 
+    const fileUrl = parentLink.href;
+    const isVideo = fileUrl.endsWith('.webm') || fileUrl.endsWith('.mp4');
+    const container = parentLink.parentNode; // .file
+
+    // Check if we are currently showing a video (expanded state for video)
+    const existingVideo = container.querySelector('video');
+
+    if (existingVideo) {
+        // --- COLLAPSE VIDEO ---
+        existingVideo.remove();
+        img.style.display = 'inline-block';
+        img.dataset.expanded = 'false';
+        return;
+    }
+
     const isExpanded = img.dataset.expanded === 'true';
 
     if (isExpanded) {
-        // --- COLLAPSE LOGIC ---
+        // --- COLLAPSE IMAGE ---
         img.style.maxWidth = '';
         img.style.maxHeight = '';
         img.dataset.expanded = 'false';
@@ -79,12 +94,33 @@ export function toggleImageSize(img) {
             }
         }, 300);
     } else {
-        // --- EXPAND LOGIC ---
-        img.dataset.thumbSrc = img.src;
-        img.src = parentLink.href;
-        img.style.maxWidth = config.imageExpandedMaxWidth;
-        img.style.maxHeight = config.imageExpandedMaxHeight;
-        img.dataset.expanded = 'true';
+        // --- EXPAND ---
+        if (isVideo) {
+            img.style.display = 'none';
+            img.dataset.expanded = 'true';
+            const video = document.createElement('video');
+            video.src = fileUrl;
+            video.controls = true;
+            video.autoplay = true;
+            video.loop = true;
+            video.style.maxWidth = config.imageExpandedMaxWidth;
+            video.style.maxHeight = config.imageExpandedMaxHeight;
+            // Insert video after the link
+            parentLink.after(video);
+            
+            // Allow clicking video to collapse (optional, but standard behavior)
+            // But usually controls gobble clicks. We'll leave it for now or add listener to non-control areas?
+            // Actually, usually you click the filename to close or the video itself if controls aren't hit.
+            // Let's rely on the global handler which might not catch video clicks due to controls.
+            // We can add a click listener to the video to remove it if not on controls, but simple is better.
+            
+        } else {
+            img.dataset.thumbSrc = img.src;
+            img.src = fileUrl;
+            img.style.maxWidth = config.imageExpandedMaxWidth;
+            img.style.maxHeight = config.imageExpandedMaxHeight;
+            img.dataset.expanded = 'true';
+        }
     }
 }
 

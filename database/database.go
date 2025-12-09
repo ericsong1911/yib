@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -19,11 +20,18 @@ import (
 
 // DatabaseService is the central struct for all database operations.
 type DatabaseService struct {
-	DB         *sql.DB
-	logger     *slog.Logger
-	dsn        string
-	boardCache map[string]*models.BoardConfig
-	cacheMu    sync.RWMutex
+	DB           *sql.DB
+	logger       *slog.Logger
+	dsn          string
+	boardCache   map[string]*models.BoardConfig
+	cacheMu      sync.RWMutex
+	filtersCache []cachedFilter
+	filtersMu    sync.RWMutex
+}
+
+type cachedFilter struct {
+	filter models.Filter
+	regexp *regexp.Regexp
 }
 
 // InitDB connects to the database, runs migrations, and seeds default data.
@@ -64,8 +72,7 @@ func InitDB(dataSourceName string, logger *slog.Logger) (*DatabaseService, error
 		var postCount int
 		if err := db.QueryRow("SELECT COUNT(*) FROM posts").Scan(&postCount); err == nil && postCount > 0 {
 			logger.Info("FTS table is empty, performing one-time data migration for existing posts...")
-			_, err := db.Exec(`INSERT INTO posts_fts(rowid, subject, content) SELECT p.id, t.subject, p.content FROM posts p JOIN threads t ON p.thread_id = t.id;`)
-			if err != nil {
+			if _, err := db.Exec(`INSERT INTO posts_fts(rowid, subject, content) SELECT p.id, t.subject, p.content FROM posts p JOIN threads t ON p.thread_id = t.id;`); err != nil {
 				logger.Error("CRITICAL: Failed to migrate existing posts to FTS table", "error", err)
 			} else {
 				logger.Info("FTS data migration complete.")
@@ -75,12 +82,18 @@ func InitDB(dataSourceName string, logger *slog.Logger) (*DatabaseService, error
 
 	logger.Info("Database initialized and cache ready.")
 
-	return &DatabaseService{
+	ds := &DatabaseService{
 		DB:         db,
 		logger:     logger,
 		dsn:        dataSourceName, // Store the DSN
 		boardCache: make(map[string]*models.BoardConfig),
-	}, nil
+	}
+
+	if err := ds.ReloadFilters(); err != nil {
+		logger.Warn("Failed to load initial filters", "error", err)
+	}
+
+	return ds, nil
 }
 
 // BackupDatabase performs an online backup of the live SQLite database using VACUUM INTO.
@@ -98,8 +111,7 @@ func (ds *DatabaseService) BackupDatabase() (string, error) {
 
 	ds.logger.Info("Starting database backup", "destination", backupPath)
 
-	_, err := ds.DB.Exec("VACUUM INTO ?", backupPath)
-	if err != nil {
+	if _, err := ds.DB.Exec("VACUUM INTO ?", backupPath); err != nil {
 		// If backup fails, attempt to remove the potentially incomplete file
 		if removeErr := os.Remove(backupPath); removeErr != nil && !os.IsNotExist(removeErr) {
 			ds.logger.Error("Failed to remove incomplete backup file", "path", backupPath, "error", removeErr)
@@ -362,7 +374,11 @@ func (ds *DatabaseService) GetBanDetails(ip, ipHash, cookieHash string) (models.
 		ds.logger.Error("Failed to query CIDR bans", "error", err)
 		return ban, false
 	}
-	defer cidrRows.Close()
+	defer func() {
+		if cerr := cidrRows.Close(); cerr != nil {
+			ds.logger.Error("Failed to close CIDR rows in GetBanDetails", "error", cerr)
+		}
+	}()
 
 	userIP := net.ParseIP(ip)
 	if userIP == nil {
@@ -384,7 +400,7 @@ func (ds *DatabaseService) GetBanDetails(ip, ipHash, cookieHash string) (models.
 }
 
 // DeletePost handles the logic of deleting a post or an entire thread.
-func (ds *DatabaseService) DeletePost(postID int64, uploadDir string, modHash, details string) (boardID string, isOp bool, err error) {
+func (ds *DatabaseService) DeletePost(postID int64, storage models.StorageService, modHash, details string) (boardID string, isOp bool, err error) {
 	tx, err := ds.DB.Begin()
 	if err != nil {
 		return "", false, err
@@ -469,9 +485,8 @@ func (ds *DatabaseService) DeletePost(postID int64, uploadDir string, modHash, d
 			continue
 		}
 		if count == 0 {
-			filePath := filepath.Join(uploadDir, filepath.Base(file.Path))
-			if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
-				ds.logger.Warn("Failed to remove image file", "path", filePath, "error", err)
+			if err := storage.DeleteFile(file.Path); err != nil {
+				ds.logger.Warn("Failed to delete file from storage", "path", file.Path, "error", err)
 			}
 		}
 	}
@@ -479,7 +494,7 @@ func (ds *DatabaseService) DeletePost(postID int64, uploadDir string, modHash, d
 }
 
 // DeletePostsByHash deletes all posts matching a specific IP or Cookie hash.
-func (ds *DatabaseService) DeletePostsByHash(hash, hashType, uploadDir, modHash string) (int64, error) {
+func (ds *DatabaseService) DeletePostsByHash(hash, hashType string, storage models.StorageService, modHash string) (int64, error) {
 	tx, err := ds.DB.Begin()
 	if err != nil {
 		return 0, err
@@ -491,60 +506,79 @@ func (ds *DatabaseService) DeletePostsByHash(hash, hashType, uploadDir, modHash 
 	}()
 
 	var column string
-	if hashType == "ip" {
+	switch hashType {
+	case "ip":
 		column = "ip_hash"
-	} else if hashType == "cookie" {
+	case "cookie":
 		column = "cookie_hash"
-	} else {
+	default:
 		return 0, fmt.Errorf("invalid hash type: %s", hashType)
 	}
 
-	rows, err := tx.Query(fmt.Sprintf("SELECT id FROM posts WHERE %s = ?", column), hash)
+	rows, err := tx.Query(fmt.Sprintf("SELECT id, image_path, thumbnail_path, image_hash, thread_id FROM posts WHERE %s = ?", column), hash)
 	if err != nil {
 		return 0, err
 	}
-
-	var postIDs []int64
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err == nil {
-			postIDs = append(postIDs, id)
+	defer func() {
+		if cerr := rows.Close(); cerr != nil {
+			ds.logger.Error("Failed to close rows in DeletePostsByHash (outer query)", "error", cerr)
 		}
-	}
-	rows.Close()
+	}()
 
-	if len(postIDs) == 0 {
+	var postDetails []struct { 
+		ID int64
+		ImagePath sql.NullString
+		ThumbnailPath sql.NullString
+		ImageHash string
+		ThreadID int64
+	}
+	for rows.Next() {
+		var pd struct { 
+			ID int64
+			ImagePath sql.NullString
+			ThumbnailPath sql.NullString
+			ImageHash string
+			ThreadID int64
+		}
+		if err := rows.Scan(&pd.ID, &pd.ImagePath, &pd.ThumbnailPath, &pd.ImageHash, &pd.ThreadID); err != nil {
+			ds.logger.Error("Failed to scan post details for mass delete", "error", err)
+			continue
+		}
+		postDetails = append(postDetails, pd)
+	}
+
+	if len(postDetails) == 0 {
 		return 0, nil
 	}
 
 	deletedCount := int64(0)
-	for _, postID := range postIDs {
-		// Reuse logic similar to DeletePost but within this transaction.
+	for _, pd := range postDetails {
+		postID := pd.ID
+		threadID := pd.ThreadID
+		imagePath := pd.ImagePath
+		thumbnailPath := pd.ThumbnailPath
+		imageHash := pd.ImageHash
 
-		var boardID string
-		var threadID int64
-		var imagePath, thumbnailPath, imageHash sql.NullString
+		// Determine if it's an OP (simplified check for mass delete)
 		var isOp bool
-
-		err := tx.QueryRow(`SELECT board_id, thread_id, image_path, thumbnail_path, image_hash, (SELECT id FROM posts WHERE thread_id = p.thread_id ORDER BY id ASC LIMIT 1) = p.id as is_op FROM posts p WHERE id = ?`, postID).Scan(&boardID, &threadID, &imagePath, &thumbnailPath, &imageHash, &isOp)
-		if err != nil {
-			if err == sql.ErrNoRows {
-				continue // Already deleted
-			}
-			return 0, err
+		if err := tx.QueryRow("SELECT (SELECT MIN(id) FROM posts WHERE thread_id = ?) = ?", threadID, postID).Scan(&isOp); err != nil && err != sql.ErrNoRows {
+			ds.logger.Error("Failed to check if post is OP in mass delete", "post_id", postID, "error", err)
+			continue
 		}
 
 		type fileToDelete struct{ Path, Hash string }
 		filesToCheck := make(map[string]fileToDelete)
 
 		if isOp {
-			rows, err := tx.Query("SELECT image_path, thumbnail_path, image_hash FROM posts WHERE thread_id = ? AND image_path IS NOT NULL AND image_path != ''", threadID)
+			// If OP, delete the whole thread. Get all images in thread first.
+			threadRows, err := tx.Query("SELECT image_path, thumbnail_path, image_hash FROM posts WHERE thread_id = ? AND image_path IS NOT NULL AND image_path != ''", threadID)
 			if err != nil {
-				return 0, err
+				ds.logger.Error("Failed to query images for thread in mass delete", "error", err)
+				continue // Skip this thread, try next post
 			}
-			for rows.Next() {
+			for threadRows.Next() {
 				var p, t, h sql.NullString
-				if err := rows.Scan(&p, &t, &h); err == nil {
+				if err := threadRows.Scan(&p, &t, &h); err == nil {
 					if p.Valid {
 						filesToCheck[p.String] = fileToDelete{Path: p.String, Hash: h.String}
 					}
@@ -553,53 +587,54 @@ func (ds *DatabaseService) DeletePostsByHash(hash, hashType, uploadDir, modHash 
 					}
 				}
 			}
-			rows.Close()
+			if err := threadRows.Close(); err != nil {
+				ds.logger.Error("Failed to close inner rows in DeletePostsByHash (isOp)", "error", err)
+			}
+			// Delete the thread and all its posts
 			if _, err := tx.Exec("DELETE FROM threads WHERE id = ?", threadID); err != nil {
-				return 0, err
+				ds.logger.Error("Failed to delete thread in mass delete", "thread_id", threadID, "error", err)
+				continue
 			}
 		} else {
-			if imagePath.Valid && imageHash.Valid {
-				filesToCheck[imagePath.String] = fileToDelete{Path: imagePath.String, Hash: imageHash.String}
+			// It's a reply, delete only the post and update thread counts
+			if imagePath.Valid && imageHash != "" {
+				filesToCheck[imagePath.String] = fileToDelete{Path: imagePath.String, Hash: imageHash}
 				if thumbnailPath.Valid {
-					filesToCheck[thumbnailPath.String] = fileToDelete{Path: thumbnailPath.String, Hash: imageHash.String}
+					filesToCheck[thumbnailPath.String] = fileToDelete{Path: thumbnailPath.String, Hash: imageHash}
 				}
 			}
 			if _, err := tx.Exec("DELETE FROM posts WHERE id = ?", postID); err != nil {
-				return 0, err
+				ds.logger.Error("Failed to delete reply post in mass delete", "post_id", postID, "error", err)
+				continue
 			}
-			// Ideally update thread counts, but for mass nuke it might be acceptable to be slightly off or fix later.
-			// However, to be correct:
+			// Decrement reply and image counts on the parent thread
 			if _, err := tx.Exec("UPDATE threads SET reply_count = reply_count - 1 WHERE id = ?", threadID); err != nil {
-				// Ignore error if thread deleted? No, thread should exist if post existed as reply.
+				ds.logger.Warn("Failed to update reply count during mass delete", "thread_id", threadID, "error", err)
 			}
 			if imagePath.Valid {
 				if _, err := tx.Exec("UPDATE threads SET image_count = image_count - 1 WHERE id = ?", threadID); err != nil {
-					// same
+					ds.logger.Warn("Failed to update image count during mass delete", "thread_id", threadID, "error", err)
 				}
 			}
 		}
 
-		// Delete files
+		// Delete files from storage if no other posts reference them
 		for _, file := range filesToCheck {
 			var count int
-			// Check if other posts use this hash (in case of duplicate images across threads/boards)
-			// Note: We are in a transaction, so we should check against the DB state.
-			// But since we just deleted the post, the count should reflect that.
 			if err := tx.QueryRow("SELECT COUNT(*) FROM posts WHERE image_hash = ?", file.Hash).Scan(&count); err == nil && count == 0 {
-				filePath := filepath.Join(uploadDir, filepath.Base(file.Path))
-				os.Remove(filePath)
+				if err := storage.DeleteFile(file.Path); err != nil {
+					ds.logger.Warn("Failed to delete file from storage during mass delete", "path", file.Path, "error", err)
+				}
 			}
 		}
-
 		deletedCount++
 	}
-
-	// Cleanup orphaned reports
-	// In DeletePost we do: DELETE FROM reports WHERE post_id = ?
-	// Since we deleted posts, reports referencing them should be removed.
-	// We can do a cleanup query:
+	
+	// Cleanup orphaned reports that might have been left if threads/posts were deleted.
+	// This query deletes reports where the post_id no longer exists in the posts table.
+	// It's a general cleanup and logs a warning rather than returning an error if it fails.
 	if _, err := tx.Exec("DELETE FROM reports WHERE post_id NOT IN (SELECT id FROM posts)"); err != nil {
-		ds.logger.Warn("Failed to cleanup reports during mass delete", "error", err)
+		ds.logger.Warn("Failed to cleanup orphaned reports during mass delete", "error", err)
 	}
 
 	if err := LogModAction(tx, modHash, "mass_delete", 0, fmt.Sprintf("Deleted %d posts for %s hash %s", deletedCount, hashType, hash)); err != nil {
@@ -609,8 +644,8 @@ func (ds *DatabaseService) DeletePostsByHash(hash, hashType, uploadDir, modHash 
 	return deletedCount, tx.Commit()
 }
 
-// SearchPosts performs a full-text search on posts using FTS5.
-func (ds *DatabaseService) DeleteBoard(boardID, uploadDir, modHash string) error {
+// DeleteBoard permanently removes a board and all its content.
+func (ds *DatabaseService) DeleteBoard(boardID string, storage models.StorageService, modHash string) error {
 	tx, err := ds.DB.Begin()
 	if err != nil {
 		return err
@@ -631,15 +666,13 @@ func (ds *DatabaseService) DeleteBoard(boardID, uploadDir, modHash string) error
 		var imgPath, thumbPath sql.NullString
 		if err := rows.Scan(&imgPath, &thumbPath); err == nil {
 			if imgPath.Valid && imgPath.String != "" {
-				filePath := filepath.Join(uploadDir, filepath.Base(imgPath.String))
-				if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
-					ds.logger.Warn("Failed to remove image file during board deletion", "path", filePath, "error", err)
+				if err := storage.DeleteFile(imgPath.String); err != nil {
+					ds.logger.Warn("Failed to delete file from storage during board deletion", "path", imgPath.String, "error", err)
 				}
 			}
 			if thumbPath.Valid && thumbPath.String != "" {
-				filePath := filepath.Join(uploadDir, filepath.Base(thumbPath.String))
-				if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
-					ds.logger.Warn("Failed to remove thumbnail file during board deletion", "path", filePath, "error", err)
+				if err := storage.DeleteFile(thumbPath.String); err != nil {
+					ds.logger.Warn("Failed to delete file from storage during board deletion", "path", thumbPath.String, "error", err)
 				}
 			}
 		}
@@ -802,6 +835,7 @@ func (ds *DatabaseService) fetchAndAssignReplies(threadMap map[int64]*models.Thr
 		}
 	}()
 
+	var posts []models.Post
 	for replyRows.Next() {
 		var p models.Post
 		// Scan new columns
@@ -810,15 +844,20 @@ func (ds *DatabaseService) fetchAndAssignReplies(threadMap map[int64]*models.Thr
 			continue
 		}
 		p.ThreadUserID = utils.GenerateThreadUserID(p.IPHash, p.ThreadID, dailySalt)
+		posts = append(posts, p)
+	}
+	if err := replyRows.Err(); err != nil {
+		ds.logger.Error("Row error during reply scan", "error", err)
+	}
+	// Assign fetched replies to their respective threads
+	for _, p := range posts {
 		if thread, ok := threadMap[p.ThreadID]; ok {
 			thread.Posts = append(thread.Posts, p)
 			postMap[p.ID] = &thread.Posts[len(thread.Posts)-1]
 		}
 	}
-	if err := replyRows.Err(); err != nil {
-		ds.logger.Error("Row error during reply scan", "error", err)
-	}
 }
+
 func (ds *DatabaseService) fetchAndAssignBacklinks(postIDs []interface{}, assignFunc func(targetID, backlinkID int64)) {
 	if len(postIDs) == 0 {
 		return
@@ -845,4 +884,65 @@ func (ds *DatabaseService) fetchAndAssignBacklinks(postIDs []interface{}, assign
 	if err := rows.Err(); err != nil {
 		ds.logger.Error("Row error during backlink scan", "error", err)
 	}
+}
+
+// --- Filter System ---
+
+// ReloadFilters loads active filters from the database into the cache.
+func (ds *DatabaseService) ReloadFilters() error {
+	rows, err := ds.DB.Query("SELECT id, regex, replacement, action FROM filters WHERE is_active = 1 ORDER BY id")
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if cerr := rows.Close(); cerr != nil {
+			ds.logger.Error("Failed to close rows in ReloadFilters", "error", cerr)
+		}
+	}()
+
+	var newCache []cachedFilter
+	for rows.Next() {
+		var f models.Filter
+		if err := rows.Scan(&f.ID, &f.Regex, &f.Replacement, &f.Action); err != nil {
+			ds.logger.Error("Failed to scan filter", "error", err)
+			continue
+		}
+		re, err := regexp.Compile(f.Regex)
+		if err != nil {
+			ds.logger.Error("Failed to compile filter regex", "id", f.ID, "regex", f.Regex, "error", err)
+			continue
+		}
+		newCache = append(newCache, cachedFilter{filter: f, regexp: re})
+	}
+
+	ds.filtersMu.Lock()
+	ds.filtersCache = newCache
+	ds.filtersMu.Unlock()
+	ds.logger.Info("Filters reloaded", "count", len(newCache))
+	return nil
+}
+
+// ApplyFilters checks content against active filters.
+// Returns processed content or an error if blocked.
+func (ds *DatabaseService) ApplyFilters(content string) (string, error) {
+	ds.filtersMu.RLock()
+	defer ds.filtersMu.RUnlock()
+
+	if len(ds.filtersCache) == 0 {
+		return content, nil
+	}
+
+	for _, cf := range ds.filtersCache {
+		if cf.regexp.MatchString(content) {
+			switch cf.filter.Action {
+			case "block":
+				return "", fmt.Errorf("post contains blocked content")
+			case "ban":
+				return "", fmt.Errorf("BAN_TRIGGERED")
+			case "replace":
+				content = cf.regexp.ReplaceAllString(content, cf.filter.Replacement)
+			}
+		}
+	}
+	return content, nil
 }

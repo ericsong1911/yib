@@ -3,6 +3,7 @@
 export const state = {
     hiddenThreads: {},
     autoRefreshTimer: null,
+    refreshCountdownValue: 0,
     isUserActionInProgress: false,
     postPreviewCache: new Map(),
     previewTimeout: null,

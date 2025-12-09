@@ -45,14 +45,50 @@ export default class Modal {
         });
     }
 
-    close() {
-        const existingModal = document.querySelector('.modal-backdrop');
-        if (existingModal) {
-            existingModal.remove();
+        close() {
+
+            const existingModal = document.querySelector('.modal-backdrop');
+
+            if (existingModal) {
+
+                existingModal.remove();
+
+            }
+
         }
+
+    
+
+        static escapeHTML(str) {
+
+            if (!str) return '';
+
+            return String(str).replace(/[&<>'"]/g, 
+
+                tag => ({
+
+                    '&': '&amp;',
+
+                    '<': '&lt;',
+
+                    '>': '&gt;',
+
+                    "'": '&#39;',
+
+                    '"': '&quot;'
+
+                }[tag]));
+
+        }
+
+    
+
+        static alert(title, message) {
+
+            new Modal(title, `<p>${Modal.escapeHTML(message)}</p>`, [{ id: 'modal-ok', text: 'OK', class: 'button-primary' }]).show();
+
+        }
+
     }
 
-    static alert(title, message) {
-        new Modal(title, `<p>${message}</p>`, [{ id: 'modal-ok', text: 'OK', class: 'button-primary' }]).show();
-    }
-}
+    

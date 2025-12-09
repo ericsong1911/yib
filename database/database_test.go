@@ -114,8 +114,10 @@ func TestDeletePost(t *testing.T) {
 	`, threadID)
 	tx.Commit()
 
+	ls := &utils.LocalStorage{UploadDir: uploadDir}
+
 	// --- Test Case 1: Delete a reply ---
-	boardID, isOp, err := ds.DeletePost(2, uploadDir, "mod_hash_1", "test deleting reply")
+	boardID, isOp, err := ds.DeletePost(2, ls, "mod_hash_1", "test deleting reply")
 	if err != nil {
 		t.Fatalf("Expected no error when deleting reply, but got: %v", err)
 	}
@@ -133,7 +135,7 @@ func TestDeletePost(t *testing.T) {
 	}
 
 	// --- Test Case 2: Delete the OP (and the whole thread) ---
-	boardID, isOp, err = ds.DeletePost(1, uploadDir, "mod_hash_2", "test deleting op")
+	boardID, isOp, err = ds.DeletePost(1, ls, "mod_hash_2", "test deleting op")
 	if err != nil {
 		t.Fatalf("Expected no error when deleting OP, but got: %v", err)
 	}

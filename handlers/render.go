@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"fmt"
 	"html/template"
-	"log"
 	"net/http"
 	"path/filepath"
 	"regexp"
@@ -119,7 +118,7 @@ func render(w http.ResponseWriter, r *http.Request, app App, layout, contentTmpl
 	contentBuf := new(bytes.Buffer)
 	err := templates.ExecuteTemplate(contentBuf, contentTmpl, data)
 	if err != nil {
-		log.Printf("Error rendering content template %s: %v", contentTmpl, err)
+		app.Logger().Error("Error rendering content template", "template", contentTmpl, "error", err)
 		http.Error(w, "Failed to render page content", http.StatusInternalServerError)
 		return
 	}
@@ -128,6 +127,6 @@ func render(w http.ResponseWriter, r *http.Request, app App, layout, contentTmpl
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	err = templates.ExecuteTemplate(w, layout, data)
 	if err != nil {
-		log.Printf("Error rendering layout template %s: %v", layout, err)
+		app.Logger().Error("Error rendering layout template", "template", layout, "error", err)
 	}
 }
