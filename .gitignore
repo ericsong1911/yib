@@ -39,3 +39,5 @@ go.work.sum
 uploads/
 *.db
 backups/
+*.db-shm
+*.db-wal
