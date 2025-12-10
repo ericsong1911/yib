@@ -48,7 +48,7 @@ jobs:
 
       - name: Run Go Linter
         run: |
-          go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.55.2
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.62.2
           golangci-lint run --build-tags=sqlite_fts5
         continue-on-error: true
 
@@ -132,15 +132,13 @@ jobs:
           path: release-assets
           
       - name: Create Draft Release on GitHub
-        id: create_release
-        uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref_name }}
-          release_name: yib ${{ github.ref_name }}
-          draft: true
-          prerelease: false
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --title "yib ${{ github.ref_name }}" \
+            --draft \
+            --generate-notes
           
       - name: Upload Release Assets to GitHub
         shell: bash
