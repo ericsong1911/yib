@@ -44,8 +44,16 @@ type S3Storage struct {
 }
 
 func NewS3Storage(endpoint, accessKey, secretKey, bucket, region, publicURL string, useSSL bool) (*S3Storage, error) {
+	var creds *credentials.Credentials
+	if accessKey == "" || secretKey == "" {
+		// Use IAM role credentials if keys are not provided
+		creds = credentials.NewIAM("")
+	} else {
+		creds = credentials.NewStaticV4(accessKey, secretKey, "")
+	}
+
 	minioClient, err := minio.New(endpoint, &minio.Options{
-		Creds:  credentials.NewStaticV4(accessKey, secretKey, ""),
+		Creds:  creds,
 		Secure: useSSL,
 		Region: region,
 	})
@@ -60,12 +68,6 @@ func NewS3Storage(endpoint, accessKey, secretKey, bucket, region, publicURL stri
 		return nil, fmt.Errorf("failed to check bucket existence: %w", err)
 	}
 	if !exists {
-		// Only try to create if we are sure it doesn't exist.
-		// Note: Use with caution in production if credentials lack CreateBucket permission.
-		// For now, we assume the bucket should exist.
-		// if err := minioClient.MakeBucket(ctx, bucket, minio.MakeBucketOptions{Region: region}); err != nil {
-		// 	return nil, fmt.Errorf("failed to create bucket: %w", err)
-		// }
 		return nil, fmt.Errorf("bucket %s does not exist", bucket)
 	}
 
