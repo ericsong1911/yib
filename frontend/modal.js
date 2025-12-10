@@ -85,7 +85,7 @@ export default class Modal {
 
         static alert(title, message) {
 
-            new Modal(title, `<p>${Modal.escapeHTML(message)}</p>`, [{ id: 'modal-ok', text: 'OK', class: 'button-primary' }]).show();
+            new Modal(title, `<p>${message}</p>`, [{ id: 'modal-ok', text: 'OK', class: 'button-primary' }]).show();
 
         }
 
