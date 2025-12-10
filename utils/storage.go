@@ -44,6 +44,10 @@ type S3Storage struct {
 }
 
 func NewS3Storage(endpoint, accessKey, secretKey, bucket, region, publicURL string, useSSL bool) (*S3Storage, error) {
+	// Strip scheme if present
+	endpoint = strings.TrimPrefix(endpoint, "https://")
+	endpoint = strings.TrimPrefix(endpoint, "http://")
+
 	var creds *credentials.Credentials
 	if accessKey == "" || secretKey == "" {
 		// Use IAM role credentials if keys are not provided
@@ -76,7 +80,7 @@ func NewS3Storage(endpoint, accessKey, secretKey, bucket, region, publicURL stri
 		if useSSL {
 			protocol = "https"
 		}
-		publicURL = fmt.Sprintf("%s://%s/%s", protocol, endpoint, bucket)
+		publicURL = fmt.Sprintf("%s://%s.%s", protocol, bucket, endpoint)
 	}
 	// Trim trailing slash from PublicURL
 	publicURL = strings.TrimSuffix(publicURL, "/")
