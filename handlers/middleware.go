@@ -32,16 +32,26 @@ func AppContextMiddleware(app App, next http.Handler) http.Handler {
 	})
 }
 
-// SecurityHeadersMiddleware adds important security headers to all responses.
-func SecurityHeadersMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		csp := "default-src 'self'; img-src 'self' data:; media-src 'self' data:; style-src 'self'; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; form-action 'self';"
-		w.Header().Set("Content-Security-Policy", csp)
-		w.Header().Set("X-Frame-Options", "DENY")
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
-		next.ServeHTTP(w, r)
-	})
+// NewSecurityHeadersMiddleware adds important security headers to all responses.
+// It accepts an optional allowedOrigin (e.g. "https://mybucket.s3.amazonaws.com") to be added to CSP.
+func NewSecurityHeadersMiddleware(allowedOrigin string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			imgSrc := "'self' data:"
+			mediaSrc := "'self' data:"
+			if allowedOrigin != "" {
+				imgSrc += " " + allowedOrigin
+				mediaSrc += " " + allowedOrigin
+			}
+
+			csp := "default-src 'self'; img-src " + imgSrc + "; media-src " + mediaSrc + "; style-src 'self'; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; form-action 'self';"
+			w.Header().Set("Content-Security-Policy", csp)
+			w.Header().Set("X-Frame-Options", "DENY")
+			w.Header().Set("X-Content-Type-Options", "nosniff")
+			w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 // NewStructuredLogger returns a middleware that logs requests using slog.

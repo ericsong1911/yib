@@ -14,7 +14,7 @@ import (
 
 func setupModServer(_ *testing.T, app *MockApplication) *httptest.Server {
 	mux := SetupRouter(app)
-	finalHandler := AppContextMiddleware(app, CookieMiddleware(CSRFMiddleware(SecurityHeadersMiddleware(mux))))
+	finalHandler := AppContextMiddleware(app, CookieMiddleware(CSRFMiddleware(NewSecurityHeadersMiddleware("")(mux))))
 	return httptest.NewServer(finalHandler)
 }
 

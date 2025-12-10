@@ -157,7 +157,13 @@ func main() {
 	}
 
 	mux := handlers.SetupRouter(app)
-	finalHandler := handlers.AppContextMiddleware(app, handlers.CookieMiddleware(handlers.CSRFMiddleware(handlers.SecurityHeadersMiddleware(mux))))
+	
+	var s3PublicURL string
+	if s3Store, ok := storageService.(*utils.S3Storage); ok {
+		s3PublicURL = s3Store.PublicURL
+	}
+	
+	finalHandler := handlers.AppContextMiddleware(app, handlers.CookieMiddleware(handlers.CSRFMiddleware(handlers.NewSecurityHeadersMiddleware(s3PublicURL)(mux))))
 
 	// --- Graceful Shutdown ---
 	server := &http.Server{Addr: ":" + port, Handler: finalHandler}
